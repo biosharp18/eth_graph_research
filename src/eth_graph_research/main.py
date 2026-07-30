@@ -1,7 +1,9 @@
+"""Auth check: first run opens a Google login; later runs use cached credentials."""
+
 import pydata_google_auth
 from google.cloud import bigquery
 
-PROJECT_ID = "eth-graph-research"  # your actual project ID
+PROJECT_ID = "eth-graph-research"
 
 credentials = pydata_google_auth.get_user_credentials(
     scopes=["https://www.googleapis.com/auth/bigquery"],
@@ -9,9 +11,9 @@ credentials = pydata_google_auth.get_user_credentials(
 client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
 
 query = """
-SELECT symbol, name, decimals
-FROM `bigquery-public-data.crypto_ethereum.tokens`
-WHERE LOWER(address) = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+SELECT table_name
+FROM `bigquery-public-data.goog_blockchain_ethereum_mainnet_us.INFORMATION_SCHEMA.TABLES`
+ORDER BY table_name
 """
 df = client.query(query).to_dataframe()
 print(df)
