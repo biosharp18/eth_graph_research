@@ -36,7 +36,8 @@ def test_missing_seed_raises():
 def test_per_node_cap_limits_expansion():
     pairs = [("hub", f"leaf{i}") for i in range(100)]
     con = connect_edges_from_dataframe(make_edges(pairs))
-    s = snowball_sample(con, "hub", max_nodes=1000, per_node_cap=5, rng_seed=0)
+    with pytest.warns(UserWarning, match="exhausted"):
+        s = snowball_sample(con, "hub", max_nodes=1000, per_node_cap=5, rng_seed=0)
     # hub itself plus at most 5 sampled counterparties
     assert len(s.nodes) <= 6
 
@@ -53,7 +54,7 @@ def test_induced_edges_include_untraversed():
     # contain the a-b edge.
     pairs = [("s", "a"), ("s", "b"), ("a", "b")]
     con = connect_edges_from_dataframe(make_edges(pairs))
-    s = snowball_sample(con, "s", max_nodes=10, per_node_cap=10, rng_seed=0)
+    s = snowball_sample(con, "s", max_nodes=3, per_node_cap=10, rng_seed=0)
     assert sorted(s.nodes) == ["a", "b", "s"]
     edge_pairs = set(zip(s.edges["from_address"], s.edges["to_address"]))
     assert ("a", "b") in edge_pairs
@@ -94,7 +95,7 @@ def test_save_sample_writes_files_and_refuses_overwrite(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # save_sample writes under ./data/samples/
     pairs = [("s", "a"), ("s", "b")]
     con = connect_edges_from_dataframe(make_edges(pairs))
-    s = snowball_sample(con, "s", max_nodes=10, per_node_cap=10, rng_seed=7)
+    s = snowball_sample(con, "s", max_nodes=3, per_node_cap=10, rng_seed=7)
     out = save_sample(s, "unit")
     assert (out / "nodes.parquet").exists()
     assert (out / "edges.parquet").exists()
