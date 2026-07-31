@@ -77,13 +77,19 @@ def snowball_sample(
             con.execute(
                 f"""
                 WITH touching AS (
-                    SELECT f.node AS anchor, e.to_address AS counterparty,
-                           e.block_timestamp, e.value_eth
-                    FROM edges e JOIN frontier f ON e.from_address = f.node
-                    UNION ALL
-                    SELECT f.node AS anchor, e.from_address AS counterparty,
-                           e.block_timestamp, e.value_eth
-                    FROM edges e JOIN frontier f ON e.to_address = f.node
+                    SELECT anchor, counterparty, block_timestamp, value_eth
+                    FROM (
+                        SELECT f.node AS anchor, e.to_address AS counterparty,
+                               e.block_timestamp, e.value_eth
+                        FROM edges e JOIN frontier f ON e.from_address = f.node
+                        UNION ALL
+                        SELECT f.node AS anchor, e.from_address AS counterparty,
+                               e.block_timestamp, e.value_eth
+                        FROM edges e JOIN frontier f ON e.to_address = f.node
+                    )
+                    -- contract-creation transactions have to_address IS NULL;
+                    -- they have no counterparty node to expand to.
+                    WHERE counterparty IS NOT NULL
                 ),
                 capped AS (
                     SELECT anchor, counterparty,

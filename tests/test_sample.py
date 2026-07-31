@@ -79,6 +79,17 @@ def test_frontier_exhaustion_returns_component_with_warning():
     assert sorted(s.nodes) == ["a", "b", "c"]
 
 
+def test_contract_creation_null_to_address_is_ignored():
+    # Real data has contract-creation txs with to_address IS NULL; they must
+    # not become a "counterparty" node (which would crash sorted() on a
+    # str/NaN mix) and must not be included in the induced edge output.
+    pairs = [("s", "a"), ("s", None), ("a", "b")]
+    con = connect_edges_from_dataframe(make_edges(pairs))
+    s = snowball_sample(con, "s", max_nodes=10, per_node_cap=10, rng_seed=0)
+    assert sorted(s.nodes) == ["a", "b", "s"]
+    assert s.edges["to_address"].isna().sum() == 0
+
+
 def test_pick_seeds_activity_band():
     # "mid" has 3 edges, "hub" has 30, leaves have 1 each.
     pairs = [("mid", f"m{i}") for i in range(3)] + [
