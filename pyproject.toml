@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "db-dtypes>=1.7.1",
+    "duckdb>=1.5.5",
     "google-cloud-bigquery>=3.42.2",
     "google-cloud-bigquery-storage>=2.39.0",
     "pandas>=3.0.5",
@@ -26,4 +27,5 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "jupyter>=1.1.1",
+    "pytest>=9.1.1",
 ]
