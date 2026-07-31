@@ -13,15 +13,25 @@ DATASET = "bigquery-public-data.goog_blockchain_ethereum_mainnet_us"
 _client: bigquery.Client | None = None
 
 
+def _get_credentials():
+    return pydata_google_auth.get_user_credentials(
+        scopes=["https://www.googleapis.com/auth/bigquery"],
+    )
+
+
 def get_client() -> bigquery.Client:
     """Return a cached BigQuery client authenticated as the user."""
     global _client
     if _client is None:
-        credentials = pydata_google_auth.get_user_credentials(
-            scopes=["https://www.googleapis.com/auth/bigquery"],
-        )
-        _client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+        _client = bigquery.Client(project=PROJECT_ID, credentials=_get_credentials())
     return _client
+
+
+def get_bqstorage_client():
+    """Client for the BigQuery Storage read API (fast bulk downloads)."""
+    from google.cloud import bigquery_storage
+
+    return bigquery_storage.BigQueryReadClient(credentials=_get_credentials())
 
 
 def dry_run(sql: str) -> float:

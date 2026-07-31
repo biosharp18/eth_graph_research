@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Extracted datasets and samples (provenance in manifest.json files)
+data/
