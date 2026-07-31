@@ -16,13 +16,27 @@ import duckdb
 import pandas as pd
 
 RAW_GLOB = "data/raw/eth_edges_2026-05-01_2026-07-30/part-*.parquet"
+RAW_MANIFEST_PATH = Path(RAW_GLOB).parent / "manifest.json"
 
 _EDGE_COLS = "from_address, to_address, block_timestamp, transaction_hash, value_eth"
+
+
+def _raw_manifest_summary() -> dict | None:
+    """Row count / window bounds from the raw extraction manifest, if present."""
+    if not RAW_MANIFEST_PATH.exists():
+        return None
+    raw = json.loads(RAW_MANIFEST_PATH.read_text())
+    return {
+        "row_count": raw.get("row_count"),
+        "window_start": raw.get("window_start"),
+        "window_end": raw.get("window_end"),
+    }
 
 
 def connect_edges(parquet_glob: str = RAW_GLOB) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection with an `edges` view over the raw parquet."""
     con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
     con.execute(
         f"CREATE VIEW edges AS SELECT {_EDGE_COLS} FROM read_parquet('{parquet_glob}')"
     )
@@ -32,6 +46,7 @@ def connect_edges(parquet_glob: str = RAW_GLOB) -> duckdb.DuckDBPyConnection:
 def connect_edges_from_dataframe(df: pd.DataFrame) -> duckdb.DuckDBPyConnection:
     """Testing hook: an `edges` view over an in-memory DataFrame."""
     con = duckdb.connect()
+    con.execute("SET TimeZone='UTC'")
     con.register("edges_df", df)
     con.execute(f"CREATE VIEW edges AS SELECT {_EDGE_COLS} FROM edges_df")
     return con
@@ -183,6 +198,8 @@ def save_sample(s: Sample, name: str) -> Path:
         "n_nodes": len(s.nodes),
         "n_edges": len(s.edges),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "duckdb_version": duckdb.__version__,
+        "raw_manifest": _raw_manifest_summary(),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return out

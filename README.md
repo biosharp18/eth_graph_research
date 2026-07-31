@@ -35,7 +35,7 @@ the cap.
 ## Dataset pipeline
 
 One-time extraction of the fixed 90-day ETH edge window (~41 GB scanned,
-~5-8 GB on disk), then free local sampling:
+~15 GB on disk), then free local sampling:
 
 ```bash
 uv run python -m eth_graph_research.extract   # once; refuses to overwrite

@@ -85,7 +85,9 @@ def test_contract_creation_null_to_address_is_ignored():
     # str/NaN mix) and must not be included in the induced edge output.
     pairs = [("s", "a"), ("s", None), ("a", "b")]
     con = connect_edges_from_dataframe(make_edges(pairs))
-    s = snowball_sample(con, "s", max_nodes=10, per_node_cap=10, rng_seed=0)
+    # max_nodes=3 matches the reachable node count (s, a, b) exactly, so the
+    # frontier is satisfied rather than exhausted (no warning expected).
+    s = snowball_sample(con, "s", max_nodes=3, per_node_cap=10, rng_seed=0)
     assert sorted(s.nodes) == ["a", "b", "s"]
     assert s.edges["to_address"].isna().sum() == 0
 
