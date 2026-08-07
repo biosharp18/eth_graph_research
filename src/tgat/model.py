@@ -70,7 +70,7 @@ class TGAT(nn.Module):
         nbr_days = (days[:, None] - dt.astype(np.int64)).reshape(-1)
         nbr_h = self._embed(nbr.reshape(-1), nbr_days, store, device,
                             depth - 1).reshape(B, k, self.dim)
-        node_h = self._embed(nodes, days, store, device, 0)
+        node_h = self._embed(nodes, days, store, device, depth - 1)
         t_dt = torch.from_numpy(dt).to(device)
         return self.layers[depth - 1](
             node_h,

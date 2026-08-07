@@ -35,6 +35,7 @@ def test_histories_differentiate_nodes():
     # zero node features: embeddings must still differ when histories differ
     st = rand_store()
     m = TGAT(edge_feat_dim=7, dim=32)
+    m.eval()
     torch.manual_seed(0)
     z = m.embed(np.array([0, 1]), np.array([40, 40]), st, torch.device("cpu"))
     assert not torch.allclose(z[0], z[1])
