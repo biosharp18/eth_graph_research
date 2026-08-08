@@ -26,11 +26,17 @@ def sample_training_negatives(rng, src, dst, day, n_nodes, pos_pairs_by_day):
 
 
 def average_precision(y, score):
+    y = np.asarray(y)
+    score = np.asarray(score, dtype=np.float64)
     order = np.argsort(-score, kind="stable")
-    y = np.asarray(y)[order]
-    tp = np.cumsum(y)
-    prec = tp / np.arange(1, len(y) + 1)
-    return float((prec * y).sum() / y.sum())
+    y_s, s_s = y[order], score[order]
+    tp = np.cumsum(y_s)
+    n = np.arange(1, len(y_s) + 1)
+    last = np.r_[np.nonzero(np.diff(s_s))[0], len(s_s) - 1]  # end of each tied block
+    prec = tp[last] / n[last]
+    rec = tp[last] / tp[-1]
+    drec = np.diff(np.r_[0.0, rec])
+    return float(np.sum(prec * drec))
 
 
 def _pos_pairs_by_day(g: DailyGraph):

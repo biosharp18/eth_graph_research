@@ -106,13 +106,14 @@ def amount_baselines(g: DailyGraph):
     """persistence + global-median RMSE/MAE in log10-USD on test positives."""
     log_usd = np.log10(g.usd_sum)
     med = float(np.median(log_usd[:g.train_end]))
+    before = set(zip(g.src[:g.val_end].tolist(), g.dst[:g.val_end].tolist()))
     last_amt = {}
     for s, d, la in zip(g.src[:g.val_end], g.dst[:g.val_end], log_usd[:g.val_end]):
         last_amt[(int(s), int(d))] = la
     preds_p, preds_m, actual, seen_mask = [], [], [], []
     for j in range(g.val_end, len(g.src)):
         pair = (int(g.src[j]), int(g.dst[j]))
-        seen_mask.append(pair in last_amt)
+        seen_mask.append(pair in before)
         preds_p.append(last_amt.get(pair, med))
         preds_m.append(med)
         actual.append(log_usd[j])
@@ -148,7 +149,10 @@ def main():
 
     res = {"edgebank": {}, "tgat": {}, "amount": {},
            "split": {"train_end": g.train_end, "val_end": g.val_end,
-                     "n_edges": len(g.src), "seen_frac": float(seen.mean())}}
+                     "n_edges": len(g.src), "seen_frac": float(seen.mean()),
+                     "train_days": [int(g.day[0]), int(g.day[g.train_end - 1])],
+                     "val_days": [int(g.day[g.train_end]), int(g.day[g.val_end - 1])],
+                     "test_days": [int(g.day[g.val_end]), int(g.day[-1])]}}
 
     for strategy in ("random", "historical", "inductive"):
         res["edgebank"].setdefault("inf", {})[strategy] = {"auroc": [], "ap": []}

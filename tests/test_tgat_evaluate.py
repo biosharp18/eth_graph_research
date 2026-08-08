@@ -1,6 +1,6 @@
 import numpy as np
 from tgat.data import DailyGraph
-from tgat.evaluate import auroc, build_negative_pools, edgebank_scores
+from tgat.evaluate import auroc, average_precision, build_negative_pools, edgebank_scores
 from tests.test_tgat_train import toy_graph
 
 def rich_graph(E=3000, n_nodes=400, n_days=40, seed=1):
@@ -58,3 +58,11 @@ def test_edgebank_inf_scores_memory_membership():
     # planted graph: every test pair was seen in train -> all positives remembered
     assert pos_sc.mean() > 0.95
     assert neg_sc.mean() < 0.05
+
+def test_average_precision_ties_give_block_average():
+    # one pos, one neg, tied score: single block, precision 0.5, recall 1
+    assert average_precision(np.array([1, 0]), np.array([0.5, 0.5])) == 0.5
+
+def test_average_precision_binary_scorer():
+    # y=[1,1,0,0], s=[1,0,1,0]: block@1 -> P=.5,R=.5 ; block@0 -> P=.5,R=1
+    assert average_precision(np.array([1, 1, 0, 0]), np.array([1.0, 0.0, 1.0, 0.0])) == 0.5
