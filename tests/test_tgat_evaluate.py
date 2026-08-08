@@ -1,6 +1,24 @@
 import numpy as np
+from tgat.data import DailyGraph
 from tgat.evaluate import auroc, build_negative_pools, edgebank_scores
 from tests.test_tgat_train import toy_graph
+
+def rich_graph(E=3000, n_nodes=400, n_days=40, seed=1):
+    """Like toy_graph but with ~600 distinct planted pairs so per-day
+    historical pools exceed the day's positive count."""
+    rng = np.random.default_rng(seed)
+    day = np.sort(rng.integers(0, n_days, E)).astype(np.int64)
+    src = (2 * rng.integers(0, n_nodes // 2, E)).astype(np.int64)
+    # three deterministic partners per source instead of one
+    dst = src + rng.integers(1, 4, E).astype(np.int64)
+    usd = 10 ** rng.normal(4, 1, E)
+    y = ((np.log10(usd) - 4) / 1).astype(np.float32)
+    feat = np.column_stack([y, np.ones(E), np.ones(E), np.zeros(E),
+                            np.zeros(E), np.zeros(E)]).astype(np.float32)
+    return DailyGraph(src=src, dst=dst, day=day, edge_feat=feat, y_amt=y,
+                      usd_sum=usd, n_nodes=n_nodes + 4, n_days=n_days,
+                      train_end=int(E * .7), val_end=int(E * .85),
+                      amt_mean=4.0, amt_std=1.0)
 
 def test_auroc_matches_hand_computation():
     y = np.array([1, 1, 0, 0])
@@ -14,7 +32,7 @@ def test_auroc_ties_give_half_credit():
     assert auroc(y, s) == 0.5
 
 def test_historical_negatives_seen_before_test():
-    g = toy_graph()
+    g = rich_graph()
     seen = set(zip(g.src[:g.val_end].tolist(), g.dst[:g.val_end].tolist()))
     pos_by_day = {}
     for s, d, t in zip(g.src, g.dst, g.day):
@@ -27,7 +45,7 @@ def test_historical_negatives_seen_before_test():
         assert (int(s), int(d)) not in pos_by_day[int(t)]   # never a same-day positive
 
 def test_inductive_negatives_unseen_before_test():
-    g = toy_graph()
+    g = rich_graph()
     seen = set(zip(g.src[:g.val_end].tolist(), g.dst[:g.val_end].tolist()))
     negs = build_negative_pools(g, "inductive", seed=0)
     in_seen = sum((int(s), int(d)) in seen for (s, d) in negs)

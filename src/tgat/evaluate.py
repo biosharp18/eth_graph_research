@@ -47,15 +47,9 @@ def build_negative_pools(g: DailyGraph, strategy: str, seed: int) -> np.ndarray:
         chosen = []
         if strategy in ("historical", "inductive"):
             pool = list((before if strategy == "historical" else induct) - e_t)
-            # sample with replacement: the qualifying pool (pairs seen
-            # before test / only-in-test pairs, minus today's positives) is
-            # often much smaller than the day's positive count, so capping
-            # at len(pool) without replacement would push most negatives
-            # into the random-top-up branch below. Only fall through to
-            # random top-up when the pool is genuinely empty.
-            if pool:
-                for i in rng.choice(len(pool), size=npos, replace=True):
-                    chosen.append(pool[i])
+            take = min(npos, len(pool))
+            for i in rng.choice(len(pool), size=take, replace=False):
+                chosen.append(pool[i])
         while len(chosen) < npos:  # random NS and top-up
             s = int(rng.integers(0, g.n_nodes)); d = int(rng.integers(0, g.n_nodes))
             if s != d and (s, d) not in all_pairs:
