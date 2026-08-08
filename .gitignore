@@ -11,3 +11,4 @@ wheels/
 
 # Extracted datasets and samples (provenance in manifest.json files)
 data/
+figures/tgat_models/
