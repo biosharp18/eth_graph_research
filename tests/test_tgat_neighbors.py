@@ -86,3 +86,15 @@ def test_vectorized_matches_reference_and_is_fast():
     for _ in range(20):
         st.sample(q_nodes, q_days)
     assert (time.time() - t0) / 20 < 0.05
+
+def test_query_day_beyond_range_no_bleed():
+    # node 0 has 1 edge on day 0; node 1 has edges on day 1.
+    src = np.array([0, 1], dtype=np.int64)
+    dst = np.array([2, 3], dtype=np.int64)
+    day = np.array([0, 1], dtype=np.int64)
+    feat = np.ones((2, 2), dtype=np.float32)
+    st = NeighborStore(src, dst, day, feat, n_nodes=4, k=5)
+    nbr, dt, f, mask = st.sample(np.array([0]), np.array([60]))
+    # must see ONLY node 0's single incidence, never node 1's
+    assert mask[0].sum() == 1
+    assert nbr[0][mask[0]].tolist() == [2]

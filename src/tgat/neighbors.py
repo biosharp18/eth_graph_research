@@ -55,6 +55,7 @@ class NeighborStore:
         self.inc_feat = inc_feat[order]
         inc_node_sorted = inc_node[order]
         self.node_start = np.searchsorted(inc_node_sorted, np.arange(n_nodes), side="left")
+        self.node_end = np.searchsorted(inc_node_sorted, np.arange(n_nodes), side="right")
 
     def sample(self, nodes: np.ndarray, qdays: np.ndarray):
         nodes = np.asarray(nodes, dtype=np.int64)
@@ -66,6 +67,7 @@ class NeighborStore:
                     np.zeros((B, k, self.F), np.float32), np.zeros((B, k), bool))
 
         cut = np.searchsorted(self.keys, nodes * self.D + qdays, side="left")
+        cut = np.minimum(cut, self.node_end[nodes])
         lo = np.maximum(cut - k, self.node_start[nodes])
 
         idx = lo[:, None] + np.arange(k)[None, :]
