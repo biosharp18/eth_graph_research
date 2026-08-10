@@ -4,20 +4,12 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import torch
 
 from .data import DailyGraph, load_daily_graph
 from .model import TGAT
 from .neighbors import NeighborStore
-from .train import average_precision
-
-
-def auroc(y, score):
-    y = np.asarray(y); score = np.asarray(score, dtype=np.float64)
-    ranks = pd.Series(score).rank(method="average").to_numpy()
-    npos = int(y.sum()); nneg = len(y) - npos
-    return float((ranks[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
+from .train import auroc, average_precision  # noqa: F401 (auroc re-exported)
 
 
 def _pair_sets(g: DailyGraph):
