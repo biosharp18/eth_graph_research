@@ -172,7 +172,8 @@ def main():
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
               f"({info['epochs_run']} epochs)", flush=True)
-    (out / "train_log.json").write_text(json.dumps(log, indent=2))
+        # flush after every seed so an interrupted run keeps finished histories
+        (out / "train_log.json").write_text(json.dumps(log, indent=2))
 
 
 if __name__ == "__main__":
