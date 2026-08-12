@@ -159,6 +159,10 @@ def main():
     ap_.add_argument("--epochs", type=int, default=50)
     ap_.add_argument("--k", type=int, default=20)
     ap_.add_argument("--batch", type=int, default=200)
+    ap_.add_argument("--dim", type=int, default=100)
+    ap_.add_argument("--lr", type=float, default=1e-4)
+    ap_.add_argument("--lam", type=float, default=1.0)
+    ap_.add_argument("--patience", type=int, default=5)
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -167,7 +171,9 @@ def main():
     log = {}
     for seed in args.seeds:
         model, info = train_one(g, seed, torch.device(args.device),
-                                epochs=args.epochs, k=args.k, batch=args.batch)
+                                epochs=args.epochs, k=args.k, batch=args.batch,
+                                dim=args.dim, lr=args.lr, lam=args.lam,
+                                patience=args.patience)
         torch.save(model.state_dict(), out / f"tgat_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
