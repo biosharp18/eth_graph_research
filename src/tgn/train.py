@@ -129,13 +129,25 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               batch=200, lam=1.0, lr=1e-4, dim=100, k=20,
               train_metric_sample=3000, log_every=0,
               loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
-              n_neg_hard=0, beta_hard=1.0, pair_feat=False):
+              n_neg_hard=0, beta_hard=1.0, pair_feat=False,
+              hard_hinge=0.0, select="ap", val_mrr_events=500,
+              val_mrr_cands=100):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
     historical pairs). Keeping the two softmaxes separate stops the hard
     negatives from drowning out the global-calibration gradient (measured:
-    single mixed softmax trades MRR for historical AU-ROC)."""
+    single mixed softmax trades MRR for historical AU-ROC).
+
+    hard_hinge > 0 replaces the hard CE term with a margin hinge
+    mean(relu(m - (pos - hard_neg))): once the positive clears every hard
+    negative by m the gradient stops, so hard negatives that are recent
+    partners are not pushed below the unseen-candidate mass (the measured
+    failure mode of the mixed softmax at full-ranking).
+
+    select="mrr" early-stops on a sampled validation MRR (val_mrr_events
+    events, positive ranked among val_mrr_cands uniform candidates) instead
+    of matched-negative val AP — the deployment-shaped selection metric."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
@@ -163,20 +175,46 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         g, rng_eval, val_hard_frac, src_frac, 0, g.train_end, n_neg=1)
     tm_ns, tm_nd = all_ns[tm_idx, 0], all_nd[tm_idx, 0]
 
+    # fixed sampled-MRR probe: rank each chosen val positive among C uniform
+    # candidates (selection metric when select="mrr")
+    n_val = g.val_end - g.train_end
+    mrr_ev = np.sort(rng_eval.choice(
+        n_val, size=min(val_mrr_events, n_val), replace=False)) + g.train_end
+    mrr_cand = rng_eval.integers(
+        0, g.n_nodes, size=(len(mrr_ev), val_mrr_cands)).astype(np.int64)
+
+    def sampled_val_mrr(scorer_out):
+        C = val_mrr_cands
+        pos_sc = scorer_out[:len(mrr_ev)]
+        cand_sc = scorer_out[len(mrr_ev):].reshape(len(mrr_ev), C)
+        better = (cand_sc > pos_sc[:, None]).sum(1)
+        tied = (cand_sc == pos_sc[:, None]).sum(1)
+        return float((1.0 / (1.0 + better + 0.5 * tied)).mean())
+
     train_days = np.unique(g.day[:g.train_end])
 
     def epoch_metrics():
         """One streaming replay scoring the fixed train subset + validation."""
-        qs = np.concatenate([tm_s, tm_ns, g.src[val_sl], val_ns[:, 0]])
-        qd = np.concatenate([tm_d, tm_nd, g.dst[val_sl], val_nd[:, 0]])
-        qt = np.concatenate([tm_t, tm_t, g.day[val_sl], g.day[val_sl]])
-        lg, _ = score_pairs_streaming(model, g, store, device, qs, qd, qt)
+        qs = [tm_s, tm_ns, g.src[val_sl], val_ns[:, 0]]
+        qd = [tm_d, tm_nd, g.dst[val_sl], val_nd[:, 0]]
+        qt = [tm_t, tm_t, g.day[val_sl], g.day[val_sl]]
+        if select == "mrr":
+            C = val_mrr_cands
+            ms = np.repeat(g.src[mrr_ev], C)
+            qs += [g.src[mrr_ev], ms]
+            qd += [g.dst[mrr_ev], mrr_cand.ravel()]
+            qt += [g.day[mrr_ev], np.repeat(g.day[mrr_ev], C)]
+        lg, _ = score_pairs_streaming(
+            model, g, store, device, np.concatenate(qs), np.concatenate(qd),
+            np.concatenate(qt))
         n, v = n_tm, g.val_end - g.train_end
         tr_y = np.r_[np.ones(n), np.zeros(n)]
         va_y = np.r_[np.ones(v), np.zeros(v)]
-        tr_sc, va_sc = lg[:2 * n], lg[2 * n:]
+        tr_sc, va_sc = lg[:2 * n], lg[2 * n:2 * n + 2 * v]
+        val_mrr = (sampled_val_mrr(lg[2 * n + 2 * v:])
+                   if select == "mrr" else None)
         return (average_precision(tr_y, tr_sc), auroc(tr_y, tr_sc),
-                average_precision(va_y, va_sc), auroc(va_y, va_sc))
+                average_precision(va_y, va_sc), auroc(va_y, va_sc), val_mrr)
 
     best_ap, best_state, bad, history = -1.0, None, 0, []
     for epoch in range(epochs):
@@ -234,7 +272,12 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                 amt_p = model.amt_head(
                     torch.cat([zs, zd], dim=-1)).squeeze(-1)
                 logit_n = model.link_logit(zns, znd, pf_n).view(B, K)
-                if n_neg_hard > 0:
+                if n_neg_hard > 0 and hard_hinge > 0:
+                    link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
+                                 + beta_hard * F.relu(
+                                     hard_hinge - (logit_p.unsqueeze(1)
+                                                   - logit_n[:, n_neg:])).mean())
+                elif n_neg_hard > 0:
                     link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
                                  + beta_hard * softmax_ce_loss(
                                      logit_p, logit_n[:, n_neg:]))
@@ -262,20 +305,27 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
             if rec is not None:
                 rec.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi], int(T))
 
-        train_ap, train_auroc, val_ap, val_auroc = epoch_metrics()
-        history.append({
+        train_ap, train_auroc, val_ap, val_auroc, val_mrr = epoch_metrics()
+        h = {
             "epoch": epoch,
             "train_loss": float(np.mean(totals)),
             "train_bce": float(np.mean(bces)),
             "train_huber": float(np.mean(hubers)),
             "train_ap": train_ap, "train_auroc": train_auroc,
             "val_ap": val_ap, "val_auroc": val_auroc,
-        })
+        }
+        if val_mrr is not None:
+            h["val_mrr"] = val_mrr
+        history.append(h)
+        sel_metric = val_mrr if select == "mrr" else val_ap
         if log_every and epoch % log_every == 0:
             print(f"[seed {seed}] epoch {epoch} loss {np.mean(totals):.4f} "
-                  f"val_ap {val_ap:.4f}", flush=True)
-        if val_ap > best_ap:
-            best_ap, best_state, bad = val_ap, copy.deepcopy(model.state_dict()), 0
+                  f"val_ap {val_ap:.4f}"
+                  + (f" val_mrr {val_mrr:.4f}" if val_mrr is not None else ""),
+                  flush=True)
+        if sel_metric > best_ap:
+            best_ap, best_state, bad = (sel_metric,
+                                        copy.deepcopy(model.state_dict()), 0)
         else:
             bad += 1
             if bad >= patience:
@@ -306,6 +356,8 @@ def main():
     ap_.add_argument("--n-neg-hard", type=int, default=0)
     ap_.add_argument("--beta-hard", type=float, default=1.0)
     ap_.add_argument("--pair-feat", action="store_true")
+    ap_.add_argument("--hard-hinge", type=float, default=0.0)
+    ap_.add_argument("--select", choices=["ap", "mrr"], default="ap")
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -322,7 +374,9 @@ def main():
                                 src_frac=args.src_frac,
                                 n_neg_hard=args.n_neg_hard,
                                 beta_hard=args.beta_hard,
-                                pair_feat=args.pair_feat)
+                                pair_feat=args.pair_feat,
+                                hard_hinge=args.hard_hinge,
+                                select=args.select)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "

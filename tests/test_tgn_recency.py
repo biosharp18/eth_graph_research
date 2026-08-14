@@ -104,3 +104,18 @@ def test_train_and_rank_with_pair_feat_smoke():
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=3)
     r = tgn_ranking(model, g, store, torch.device("cpu"))
     assert np.isfinite(r["mrr"]["all"]) and 1.0 >= r["mrr"]["all"] > 0.0
+
+
+def test_hinge_and_mrr_selection_smoke():
+    from tests.test_tgat_train import toy_graph
+    from tgn.train import train_one
+
+    g = toy_graph(E=400, n_nodes=40, n_days=20)
+    model, info = train_one(g, seed=0, device=torch.device("cpu"), epochs=2,
+                            batch=100, dim=16, k=3, loss="ce", n_neg=2,
+                            n_neg_hard=2, beta_hard=0.5, hard_hinge=1.0,
+                            pair_feat=True, select="mrr", val_mrr_events=50,
+                            val_mrr_cands=20)
+    h = info["history"][-1]
+    assert "val_mrr" in h and 0.0 < h["val_mrr"] <= 1.0
+    assert info["best_val_ap"] == max(e["val_mrr"] for e in info["history"])
