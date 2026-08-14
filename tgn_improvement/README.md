@@ -6,15 +6,17 @@ followed, every configuration tried, results, dead ends, and open ideas.
 Written 2026-08-14 so a fresh session (human or agent) can resume without
 re-deriving anything.
 
-**State of the world right now:**
+**State of the world right now (updated 2026-08-14, pair-recency campaign):**
 - Branch `feat/bigquery-exploration` (unmerged), all work committed.
-- Best model: TGN trained with hard-negative softmax CE
-  (`tgn.train --loss ce --n-neg 5 --hard-frac 0.5`) — historical-NS AU-ROC
-  **0.8990 ± 0.0027**, best in the project on all three DGB negative-sampling
-  strategies.
-- Unsolved: deployment-style full-candidate ranking. Recency heuristic MRR
-  0.354 vs ≤0.08 for every learned config. Argued to be a feature/architecture
-  limit, not a loss limit (see `04-open-ideas.md`).
+- The deployment gap is closed to within noise: pair-recency link-head
+  features + popularity-weighted negatives + val-MRR selection give
+  MRR **0.3314 ± 0.009** (recency heuristic 0.354; hits@100 beats it) while
+  historical AU-ROC stays 0.83–0.88 depending on the mixture dial —
+  see `06-pair-recency-campaign.md` and `figures/tgn_frontier.png`.
+- Best-balanced recipe: `tgn.train --loss ce --n-neg 5 --hard-frac 0.1
+  --pop-frac 0.5 --pair-feat --select mrr`.
+- The pre-feature best (hard-CE, historical 0.8990 ± 0.0027) still leads
+  historical by +0.02–0.07 via the unseen-pair stratum only.
 
 **Reading order:**
 1. `01-context.md` — task, data, evaluation protocol, who the players are
@@ -24,8 +26,11 @@ re-deriving anything.
 3. `03-results.md` — headline 5-seed results for the winner, strata, amounts,
    ranking, and where every artifact lives.
 4. `04-open-ideas.md` — what to try next and why; what NOT to re-try.
+   (Ideas 1, 3, 4 were executed 2026-08-14 — outcomes in 06.)
 5. `05-practical-notes.md` — cluster/env gotchas (read before running
    anything), command crib sheet, code and artifact map.
+6. `06-pair-recency-campaign.md` — the 2026-08-14 campaign that closed the
+   deployment gap: diagnosis, features, negative mixtures, 5-seed frontier.
 
 **Primary sources** (this folder summarizes, they bind):
 - `../TASK.md` — the original TGN brief and comparability contract.

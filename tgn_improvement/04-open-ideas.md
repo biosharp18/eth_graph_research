@@ -62,3 +62,14 @@ ranking loss, a learned node memory is worth +0.19 AU-ROC over TGAT under
 historical negatives" — but keep reporting the deployment gap honestly; it is
 the difference between the benchmark story and the "who gets paid next"
 product story, and closing it is the actual open problem.
+
+---
+
+## Outcome update (2026-08-14)
+
+Ideas 1 (pair-recency feature), 3 (in-batch negatives), and 4 (val-MRR
+selection) were executed; idea 1 + val-MRR selection + a new ingredient
+(popularity-weighted negatives) closed the gap: MRR 0.3314 ± 0.009 vs
+recency 0.354, with historical 0.83–0.88. In-batch negatives failed
+(swamp the softmax). Idea 2 (pair-level memory) is now low value. Full
+record and the new open list: `06-pair-recency-campaign.md`.

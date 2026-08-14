@@ -14,3 +14,6 @@ data/
 figures/tgat_models/
 figures/tgn_models/
 figures/tgn_loss_*/
+figures/tgn_hard_models/
+figures/tgn_pf_*/
+figures/tgn_pfpop_*_models/

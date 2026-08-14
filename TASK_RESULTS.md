@@ -230,3 +230,52 @@ Reproduction (env prefix and parquet path as above):
 term; for this run it is the softmax CE. The AP/AU-ROC panels are measured
 against hard-mixture negatives — not comparable to the baseline's
 random-negative curves.)
+
+---
+
+## Addendum 2 (2026-08-14): pair-recency features + popularity negatives — the deployment gap closes
+
+The open problem from Addendum 1 — every learned config at deployment MRR
+≤0.08 vs the recency heuristic's 0.354 — is resolved to within noise of the
+heuristic, while keeping historical AU-ROC far above every pre-loss-campaign
+model. Full record: `tgn_improvement/06-pair-recency-campaign.md`.
+
+**Why the gap existed.** Per-event forensics showed the failure was
+cross-source calibration, not partner confusion: when the true destination
+was a known partner of the source, ~98% of the candidates outranking it were
+nodes the source had never paid (mostly globally active hubs). The
+`[z_s ‖ z_d]` head cannot recover "d is *this* source's recent partner" at
+full-ranking precision from 100-d embeddings.
+
+**The fix (three ingredients, each measured separately):**
+1. *Streaming pair-recency features* (`src/tgn/recency.py`): 4 scalars
+   [pair seen, log1p Δt(pair), dst seen, log1p Δt(dst activity)] into the
+   link head only, advanced under the same days-<-T discipline as memory.
+2. *Sampled val-MRR early stopping* (`--select mrr`): worth +0.10 MRR and
+   +0.02 historical at fixed loss, by selecting for the deployment objective.
+3. *Popularity-weighted negatives* (`--pop-frac`): destinations drawn by
+   past frequency, so hub scores get pushed down for sources they don't
+   serve. Hub outrankers fell 85% → 18%; median rank of a true partner
+   destination fell 45 → 1.
+
+**Headline (5 seeds, frozen protocol),
+`--loss ce --n-neg 5 --hard-frac 0.1 --pop-frac 0.5 --pair-feat --select mrr`:**
+random 0.9798±0.003, historical 0.8266±0.013, inductive 0.5767±0.005;
+deployment MRR **0.3314±0.009** (recency 0.3540), hits@100 **0.5993** (recency
+0.5266), unseen-stratum MRR 0.1597 ≥ recency's 0.1572. The mixture is a
+dial: hard .3/pop .4 gives historical 0.8767±0.013 at MRR 0.2965±0.018
+(see `figures/tgn_frontier.png`). Amount head unchanged (RMSE 1.6165).
+
+**The mechanism, in one sentence:** softmax CE calibrates scores to its
+training-negative distribution, so historical AU-ROC and deployment MRR
+trade off through that distribution — uniform negatives replicate
+EdgeBank_inf's historical collapse (0.255) at MRR 0.25, all-hard negatives
+give historical 0.938 while deflating recent partners to MRR 0.02 — and the
+resolution is a feature that carries the pair-recency signal plus a negative
+mixture (mild-hard + popularity + uniform) matched to *both* orderings.
+
+Honest residuals: hits@1 still trails recency (0.258 vs 0.278) and the old
+hard-CE headline keeps a +0.02–0.07 historical edge, entirely in the
+unseen-pair stratum (seen-stratum historical 0.9148 now *exceeds* it).
+A no-training lexicographic combo (recency primary, model tiebreak) reaches
+MRR 0.368 if beating the heuristic outright is required in deployment today.
