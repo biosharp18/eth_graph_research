@@ -39,3 +39,8 @@ re-deriving anything.
   protocol definitions.
 - `../docs/superpowers/plans/2026-08-13-tgn-daily-flow.md` — TGN
   implementation plan (architecture decisions with rationale).
+
+**Revisit (2026-08-14 PM):** `07-beyond-loss-revisit.md` — ensemble/soup/
+head/capacity/selection probes show the residual hist-vs-MRR split is a
+score-calibration property, not a knowledge or capacity limit;
+`--select combo` is the new recommended default.
