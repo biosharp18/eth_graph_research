@@ -13,3 +13,4 @@ wheels/
 data/
 figures/tgat_models/
 figures/tgn_models/
+figures/tgn_loss_*/
