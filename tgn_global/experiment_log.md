@@ -184,3 +184,50 @@ Launched: `g_headline_ind` = h.1 p.4 nov.2, f11, select combo, seeds 0–4;
 (hits@1 probe aimed at the partner-ordering gap vs recency).
 Planned after: 5-seed eval+ranking; `tgn.ensemble` diagnostic of
 pfpop_mrr × headline (07 showed z-avg ensembles keep both parents' bests).
+
+## 2026-08-14 — f14 probe (global + sharp dt buckets, 2 seeds): new MRR best
+
+`g_f14_mrr` (h.1 p.5, 14-dim, select mrr): rand 0.9749, hist 0.8077,
+ind 0.5812, **MRR 0.3349, h@1 0.2675** (project bests; ref 0.3314/0.2582),
+h@10 0.4591, h@100 0.5951, unseen MRR 0.1657 ≥ recency 0.1572. The sharp
+dt indicators + global features together do what neither did alone for
+ranking. Promoted to 5 seeds (`g_f14_mrr` extended with seeds 2–4;
+seeds 0–1 train log backed up to `train_log_seeds01_backup.json` because
+tgn.train rewrites the log per run). h@1 still 0.010 short of recency.
+
+## 2026-08-14 — HEADLINE (5 seeds): the inductive roof is broken
+
+`g_headline_ind` = ce n5, h.1 p.4 nov.2, pair-feat-dim 11, select combo:
+
+| metric | value (5 seeds) |
+|---|---|
+| **inductive AU-ROC** | **0.6163 ± 0.0056** (seen 0.6366 ± 0.0071 / unseen 0.6004 ± 0.0053) |
+| historical | 0.8331 ± 0.0091 (seen 0.8884 / unseen 0.7954) |
+| random | 0.9373 ± 0.0066 |
+| deploy MRR / h@1 / h@10 / h@100 | 0.2381 ± 0.013 / 0.1792 / 0.3467 / 0.5255 |
+| amount RMSE | 1.6210 ± 0.0066 (unchanged) |
+
+Old headline: inductive 0.5994 ± 0.0072; best-ever config 0.6022. This is
++0.017 over the old headline with non-overlapping seed bands, and the first
+model with BOTH inductive strata ≥ 0.60. Roof cleared by a single scalar
+scorer under the frozen protocol. Remaining gap to the 0.69 oracle =
+single-scalar calibration cost (measured: random −0.04, MRR −0.09 vs the
+MRR arm), not missing information.
+
+## 2026-08-14 — MRR arm at 5 seeds, ensemble, figure, wrap-up
+
+`g_f14_mrr` (5 seeds): rand 0.9767 ± .003, hist 0.8200 ± .015,
+ind 0.5766 ± .006, **MRR 0.3313 ± .004, h@1 0.2645 ± .003** (h@1 project
+best; MRR ties pfpop_mrr with h@1 +0.006), h@10 0.4558, h@100 0.5933,
+unseen MRR 0.1648 ± .001 (> recency 0.1572). Seeds 2–4 trained in a second
+invocation; train logs merged (seeds 0–1 from the backup).
+
+Ensemble diagnostic (z-avg f14 × headline_ind, 5 seeds): rand 0.9648,
+hist 0.8382, **ind 0.5953 (interpolates — does NOT keep the parent's
+0.6163)**, MRR 0.3266, h@1 0.2649. Same conclusion as 07: the novelty
+calibration is a property of the score scale; averaging dilutes it. The
+roof break needs the novelty-trained scorer itself.
+
+Figure: `figures/tgn_global_frontier.png`
+(`scripts/plot_frontier.py`; repo palette/conventions). Full campaign
+write-up: `results.md`. Suite: 85 passing.
