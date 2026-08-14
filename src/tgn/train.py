@@ -131,7 +131,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
               n_neg_hard=0, beta_hard=1.0, pair_feat=False,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
-              val_mrr_cands=100):
+              val_mrr_cands=100, in_batch=False):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -147,7 +147,12 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
 
     select="mrr" early-stops on a sampled validation MRR (val_mrr_events
     events, positive ranked among val_mrr_cands uniform candidates) instead
-    of matched-negative val AP — the deployment-shaped selection metric."""
+    of matched-negative val AP — the deployment-shaped selection metric.
+
+    in_batch=True (loss="ce" only) extends each positive's softmax with the
+    other same-day-batch destinations as negatives: "active today but not
+    yours", the candidate type measured to outrank true destinations at
+    full ranking. Same-destination and same-day-positive pairs are masked."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
@@ -281,6 +286,25 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                     link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
                                  + beta_hard * softmax_ce_loss(
                                      logit_p, logit_n[:, n_neg:]))
+                elif loss == "ce" and in_batch:
+                    zsr = zs.unsqueeze(1).expand(B, B, -1).reshape(B * B, -1)
+                    zdr = zd.unsqueeze(0).expand(B, B, -1).reshape(B * B, -1)
+                    ib_f = None
+                    if rec is not None:
+                        ib_f = torch.from_numpy(
+                            rec.features_cross(s, d, int(T))).to(device)
+                        ib_f = ib_f.reshape(B * B, -1)
+                    ib = model.link_logit(zsr, zdr, ib_f).view(B, B)
+                    pos_t = pos_by_day.get(int(T), set())
+                    invalid = d[None, :] == d[:, None]  # own/duplicate dst
+                    for i_, s_ in enumerate(s.tolist()):
+                        for j_, d_ in enumerate(d.tolist()):
+                            if (s_, d_) in pos_t:
+                                invalid[i_, j_] = True
+                    ib = ib.masked_fill(
+                        torch.from_numpy(invalid).to(device), float("-inf"))
+                    logits = torch.cat([logit_p.unsqueeze(1), logit_n, ib], 1)
+                    link_loss = (torch.logsumexp(logits, 1) - logit_p).mean()
                 elif loss == "ce":
                     link_loss = softmax_ce_loss(logit_p, logit_n)
                 else:
@@ -358,6 +382,7 @@ def main():
     ap_.add_argument("--pair-feat", action="store_true")
     ap_.add_argument("--hard-hinge", type=float, default=0.0)
     ap_.add_argument("--select", choices=["ap", "mrr"], default="ap")
+    ap_.add_argument("--in-batch", action="store_true")
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -376,7 +401,7 @@ def main():
                                 beta_hard=args.beta_hard,
                                 pair_feat=args.pair_feat,
                                 hard_hinge=args.hard_hinge,
-                                select=args.select)
+                                select=args.select, in_batch=args.in_batch)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "

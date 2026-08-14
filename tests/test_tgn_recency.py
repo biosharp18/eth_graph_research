@@ -119,3 +119,28 @@ def test_hinge_and_mrr_selection_smoke():
     h = info["history"][-1]
     assert "val_mrr" in h and 0.0 < h["val_mrr"] <= 1.0
     assert info["best_val_ap"] == max(e["val_mrr"] for e in info["history"])
+
+
+def test_features_cross_matches_features():
+    rng = np.random.default_rng(1)
+    tr = PairRecency(n_nodes=15)
+    for day in range(4):
+        tr.observe_day(rng.integers(0, 15, 20), rng.integers(0, 15, 20), day)
+    s = np.array([1, 3, 5])
+    d = np.array([2, 4, 6])
+    cross = tr.features_cross(s, d, day=6)
+    for i in range(3):
+        row = tr.features(np.full(3, s[i]), d, day=6)
+        np.testing.assert_array_equal(cross[i], row)
+
+
+def test_in_batch_negatives_smoke():
+    from tests.test_tgat_train import toy_graph
+    from tgn.train import train_one
+
+    g = toy_graph(E=400, n_nodes=40, n_days=20)
+    model, info = train_one(g, seed=0, device=torch.device("cpu"), epochs=2,
+                            batch=100, dim=16, k=3, loss="ce", n_neg=2,
+                            pair_feat=True, in_batch=True)
+    assert np.isfinite(info["history"][-1]["train_loss"])
+    assert np.isfinite(info["history"][-1]["val_ap"])

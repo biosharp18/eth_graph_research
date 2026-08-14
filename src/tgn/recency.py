@@ -47,6 +47,26 @@ class PairRecency:
         f[:, 2], f[:, 3] = self._dst_cols(d_arr, day)
         return f
 
+    def features_cross(self, s_arr, d_arr, day: int) -> np.ndarray:
+        """(B, B, FEAT_DIM): features of (s_arr[i], d_arr[j]) for all i, j."""
+        s_arr = np.asarray(s_arr)
+        d_arr = np.asarray(d_arr)
+        B = len(s_arr)
+        f = np.zeros((B, B, FEAT_DIM), np.float32)
+        dl = d_arr.tolist()
+        for i, s in enumerate(s_arr.tolist()):
+            cand = self.pair_last[s]
+            if cand:
+                for j, d in enumerate(dl):
+                    last = cand.get(d)
+                    if last is not None:
+                        f[i, j, 0] = 1.0
+                        f[i, j, 1] = np.log1p(day - last)
+        seen, dt = self._dst_cols(d_arr, day)
+        f[:, :, 2] = seen[None, :]
+        f[:, :, 3] = dt[None, :]
+        return f
+
     def features_all(self, s: int, day: int) -> np.ndarray:
         """(n_nodes, FEAT_DIM): features of (s, c) for every candidate c."""
         f = np.zeros((self.n_nodes, FEAT_DIM), np.float32)
