@@ -20,7 +20,8 @@ def day_ranges(day: np.ndarray, n_days: int | None = None) -> np.ndarray:
 def score_pairs_streaming(model, g, store, device, s, d, t, batch=500):
     model.eval()
     mem, last = model.init_memory(g.n_nodes, device)
-    rec = PairRecency(g.n_nodes) if model.pair_feat_dim else None
+    rec = (PairRecency(g.n_nodes, model.pair_feat_dim)
+           if model.pair_feat_dim else None)
     off = day_ranges(g.day, g.n_days)
     logit = np.empty(len(s), np.float32)
     amt = np.empty(len(s), np.float32)

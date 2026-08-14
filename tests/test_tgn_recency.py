@@ -160,3 +160,21 @@ def test_popularity_negatives_weighted_by_frequency():
     counts = np.bincount(nd.ravel(), minlength=50)
     assert counts[7] > 100  # ~20/21 of draws
     assert (ns == 2).all()
+
+
+def test_bucket_features():
+    from tgn.recency import FEAT_DIM_BUCKETS
+
+    tr = PairRecency(n_nodes=6, feat_dim=FEAT_DIM_BUCKETS)
+    tr.observe_day(np.array([0, 1]), np.array([2, 3]), day=4)
+    f = tr.features(np.array([0, 1]), np.array([2, 3]), day=5)  # dt=1
+    np.testing.assert_allclose(f[0, 4:], [1.0, 0.0, 1.0])
+    f2 = tr.features(np.array([0]), np.array([2]), day=6)  # dt=2
+    np.testing.assert_allclose(f2[0, 4:], [0.0, 1.0, 1.0])
+    f3 = tr.features(np.array([0]), np.array([2]), day=20)  # dt=16
+    np.testing.assert_allclose(f3[0, 4:], [0.0, 0.0, 0.0])
+    allf = tr.features_all(0, day=6)
+    np.testing.assert_array_equal(
+        allf[2], tr.features(np.array([0]), np.array([2]), day=6)[0])
+    cross = tr.features_cross(np.array([0, 1]), np.array([2, 3]), day=6)
+    np.testing.assert_array_equal(cross[0, 0], allf[2])

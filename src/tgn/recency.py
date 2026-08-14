@@ -15,13 +15,27 @@ from collections import defaultdict
 import numpy as np
 
 FEAT_DIM = 4
+FEAT_DIM_BUCKETS = 7  # + pair-dt indicators (==1, ==2, <=7) for sharp recency
 
 
 class PairRecency:
-    def __init__(self, n_nodes: int):
+    def __init__(self, n_nodes: int, feat_dim: int = FEAT_DIM):
+        assert feat_dim in (FEAT_DIM, FEAT_DIM_BUCKETS)
         self.n_nodes = n_nodes
+        self.feat_dim = feat_dim
         self.pair_last = defaultdict(dict)  # s -> {d: last day}
         self.dst_last = np.full(n_nodes, -1, np.int64)
+
+    def _pair_cols(self, f, i, day, last):
+        """Fill row/cell i of feature array f for a seen pair last seen at
+        `last` (f indexed [i, col] or [i, j, col] via tuple i)."""
+        dt = day - last
+        f[i + (0,)] = 1.0
+        f[i + (1,)] = np.log1p(dt)
+        if self.feat_dim >= FEAT_DIM_BUCKETS:
+            f[i + (4,)] = 1.0 if dt <= 1 else 0.0
+            f[i + (5,)] = 1.0 if dt == 2 else 0.0
+            f[i + (6,)] = 1.0 if dt <= 7 else 0.0
 
     def observe_day(self, src, dst, day: int):
         for s, d in zip(np.asarray(src).tolist(), np.asarray(dst).tolist()):
@@ -35,24 +49,23 @@ class PairRecency:
         return seen.astype(np.float32), dt.astype(np.float32)
 
     def features(self, s_arr, d_arr, day: int) -> np.ndarray:
-        """(B, FEAT_DIM) float32 for pairs (s_arr[i], d_arr[i]) queried at day."""
+        """(B, feat_dim) float32 for pairs (s_arr[i], d_arr[i]) queried at day."""
         s_arr = np.asarray(s_arr)
         d_arr = np.asarray(d_arr)
-        f = np.zeros((len(s_arr), FEAT_DIM), np.float32)
+        f = np.zeros((len(s_arr), self.feat_dim), np.float32)
         for i, (s, d) in enumerate(zip(s_arr.tolist(), d_arr.tolist())):
             last = self.pair_last[s].get(d)
             if last is not None:
-                f[i, 0] = 1.0
-                f[i, 1] = np.log1p(day - last)
+                self._pair_cols(f, (i,), day, last)
         f[:, 2], f[:, 3] = self._dst_cols(d_arr, day)
         return f
 
     def features_cross(self, s_arr, d_arr, day: int) -> np.ndarray:
-        """(B, B, FEAT_DIM): features of (s_arr[i], d_arr[j]) for all i, j."""
+        """(B, B, feat_dim): features of (s_arr[i], d_arr[j]) for all i, j."""
         s_arr = np.asarray(s_arr)
         d_arr = np.asarray(d_arr)
         B = len(s_arr)
-        f = np.zeros((B, B, FEAT_DIM), np.float32)
+        f = np.zeros((B, B, self.feat_dim), np.float32)
         dl = d_arr.tolist()
         for i, s in enumerate(s_arr.tolist()):
             cand = self.pair_last[s]
@@ -60,21 +73,25 @@ class PairRecency:
                 for j, d in enumerate(dl):
                     last = cand.get(d)
                     if last is not None:
-                        f[i, j, 0] = 1.0
-                        f[i, j, 1] = np.log1p(day - last)
+                        self._pair_cols(f, (i, j), day, last)
         seen, dt = self._dst_cols(d_arr, day)
         f[:, :, 2] = seen[None, :]
         f[:, :, 3] = dt[None, :]
         return f
 
     def features_all(self, s: int, day: int) -> np.ndarray:
-        """(n_nodes, FEAT_DIM): features of (s, c) for every candidate c."""
-        f = np.zeros((self.n_nodes, FEAT_DIM), np.float32)
+        """(n_nodes, feat_dim): features of (s, c) for every candidate c."""
+        f = np.zeros((self.n_nodes, self.feat_dim), np.float32)
         cand = self.pair_last[int(s)]
         if cand:
             cs = np.fromiter(cand.keys(), np.int64, len(cand))
             ld = np.fromiter(cand.values(), np.int64, len(cand))
+            dt = day - ld
             f[cs, 0] = 1.0
-            f[cs, 1] = np.log1p(day - ld)
+            f[cs, 1] = np.log1p(dt)
+            if self.feat_dim >= FEAT_DIM_BUCKETS:
+                f[cs, 4] = (dt <= 1).astype(np.float32)
+                f[cs, 5] = (dt == 2).astype(np.float32)
+                f[cs, 6] = (dt <= 7).astype(np.float32)
         f[:, 2], f[:, 3] = self._dst_cols(np.arange(self.n_nodes), day)
         return f

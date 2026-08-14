@@ -104,7 +104,8 @@ def tgn_ranking(model, g: DailyGraph, store, device, chunk=4096) -> dict:
     by_day = _test_day_positives(g)
     n_test = len(g.src) - g.val_end
     ranks = np.empty(n_test, np.float64)
-    rec = PairRecency(g.n_nodes) if model.pair_feat_dim else None
+    rec = (PairRecency(g.n_nodes, model.pair_feat_dim)
+           if model.pair_feat_dim else None)
     ev_i, E = 0, len(g.src)
     for T, Z in iter_day_embeddings(model, g, store, device, by_day.keys()):
         if rec is not None:

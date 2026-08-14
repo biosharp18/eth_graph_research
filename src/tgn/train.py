@@ -22,7 +22,7 @@ from tgat.neighbors import NeighborStore
 from tgat.train import _pos_pairs_by_day, auroc, average_precision
 
 from .model import TGN
-from .recency import FEAT_DIM, PairRecency
+from .recency import FEAT_DIM, FEAT_DIM_BUCKETS, PairRecency
 from .streaming import day_ranges, score_pairs_streaming
 
 
@@ -42,13 +42,14 @@ class StreamingNegatives:
     """
 
     def __init__(self, n_nodes, pos_pairs_by_day, rng, hard_frac=0.0,
-                 src_frac=0.5, pop_frac=0.0):
+                 src_frac=0.5, pop_frac=0.0, pop_window=0):
         self.n = n_nodes
         self.pos_by_day = pos_pairs_by_day
         self.rng = rng
         self.hard_frac = hard_frac
         self.src_frac = src_frac
         self.pop_frac = pop_frac
+        self.pop_window = pop_window  # 0 = all history; else last N dst tokens
         self.pair_set = set()
         self.pair_list = []      # distinct (s, d), first-seen order
         self.partners = {}       # s -> list of distinct past partners
@@ -82,9 +83,12 @@ class StreamingNegatives:
                         and self.dst_tokens:
                     # popularity negative: dst ~ past-destination frequency —
                     # pushes down globally active hubs the source never paid
+                    lo_tok = (max(0, len(self.dst_tokens) - self.pop_window)
+                              if self.pop_window else 0)
                     for _ in range(10):
                         c = self.dst_tokens[
-                            int(self.rng.integers(0, len(self.dst_tokens)))]
+                            int(self.rng.integers(lo_tok,
+                                                  len(self.dst_tokens)))]
                         if c != s and (s, c) not in pos:
                             pair = (s, c)
                             break
@@ -145,7 +149,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
               n_neg_hard=0, beta_hard=1.0, pair_feat=False,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
-              val_mrr_cands=100, in_batch=False, pop_frac=0.0):
+              val_mrr_cands=100, in_batch=False, pop_frac=0.0,
+              pair_feat_dim=FEAT_DIM, pop_window=0):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -171,7 +176,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                dim=dim, pair_feat_dim=FEAT_DIM if pair_feat else 0).to(device)
+                dim=dim,
+                pair_feat_dim=pair_feat_dim if pair_feat else 0).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     pos_by_day = _pos_pairs_by_day(g)
     off = day_ranges(g.day, g.n_days)
@@ -244,12 +250,12 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         pending = None  # (lo, hi, day) of the most recently completed day
         # negative pools rebuilt each epoch so day-T sampling is strictly-past
         sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
-                                     hard_frac, src_frac, pop_frac)
+                                     hard_frac, src_frac, pop_frac, pop_window)
         hard_sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
                                           1.0, src_frac)
         # recency features advance with the samplers: day T sees days <= T-1,
         # matching the streaming scorer's discipline
-        rec = PairRecency(g.n_nodes) if pair_feat else None
+        rec = PairRecency(g.n_nodes, pair_feat_dim) if pair_feat else None
         bces, hubers, totals = [], [], []
         for T in train_days:
             # clamp to the split boundary: real data is day-snapped, but toy
@@ -400,6 +406,9 @@ def main():
     ap_.add_argument("--select", choices=["ap", "mrr"], default="ap")
     ap_.add_argument("--in-batch", action="store_true")
     ap_.add_argument("--pop-frac", type=float, default=0.0)
+    ap_.add_argument("--pop-window", type=int, default=0)
+    ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
+                     choices=[FEAT_DIM, FEAT_DIM_BUCKETS])
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -419,7 +428,9 @@ def main():
                                 pair_feat=args.pair_feat,
                                 hard_hinge=args.hard_hinge,
                                 select=args.select, in_batch=args.in_batch,
-                                pop_frac=args.pop_frac)
+                                pop_frac=args.pop_frac,
+                                pop_window=args.pop_window,
+                                pair_feat_dim=args.pair_feat_dim)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
