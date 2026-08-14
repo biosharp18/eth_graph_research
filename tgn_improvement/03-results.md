@@ -65,11 +65,11 @@ No loss config approaches recency.
 - `deb994e` feat(tgn): 5-seed experiment results, ranking, and comparison figures
 - `ba3c8ac` docs(tgn): results write-up — TGN vs TGAT vs EdgeBank vs recency
 - `6440dfc` docs(tgn): implementation plan for the TGN daily-flow baseline
-- (loss campaign) feat(tgn): hard-negative mixture sampler and softmax ranking loss;
-  feat(tgn): two-term ranking loss — separate random and hard CE;
-  `c510205` feat(tgn): loss-ablation scoping results (L1–L5, 2 seeds each);
-  `286d433` feat(tgn): hard-negative CE loss — 5-seed headline run and figures;
-  `65a9367` docs(tgn): loss-redesign addendum
+- `2460c6c` feat(tgn): hard-negative mixture sampler and softmax ranking loss
+- `83f548d` feat(tgn): two-term ranking loss — separate random and hard CE
+- `c510205` feat(tgn): loss-ablation scoping results (L1–L5, 2 seeds each)
+- `286d433` feat(tgn): hard-negative CE loss — 5-seed headline run and figures
+- `65a9367` docs(tgn): loss-redesign addendum
 
 Test suite at time of writing: **59 passed** (`uv run --group ml pytest tests/ -q`,
 ~15–30 s warm).
