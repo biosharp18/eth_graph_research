@@ -128,3 +128,105 @@ layer reusing the TGAT store/encoder, one-day-lag differentiable memory during
 training (official-TGN scheme at day granularity), streaming eval that scores
 each day with strictly-pre-day memory and advances on observed positives only.
 Leakage property tests in `tests/test_tgn_streaming.py`; suite: 53 passed.
+
+---
+
+# Addendum (2026-08-13/14): loss redesign — the training signal WAS the bottleneck
+
+Follow-up to the interpretation above (§"Interpretation" pt. 4): we redesigned
+the loss, holding the TGN architecture and the entire frozen evaluation
+protocol fixed. **Result: the same TGN, trained with a ranking loss over
+partly-hard negatives, goes from losing to TGAT under historical NS to beating
+everything by a wide margin: historical AU-ROC 0.6505 → 0.8990 ± 0.0027.**
+Figure: `figures/tgn_loss_bar.png`; artifacts: `figures/tgn_hard_results.json`,
+`figures/tgn_hard_ranking.json`, `figures/tgn_hard_models/train_log.json`,
+scoping JSONs under `figures/tgn_loss_l{1..5}/`.
+
+## Loss designs tested
+
+All share the unchanged Huber amount term (λ=1) and the frozen eval. Negatives
+are sampled streaming-safe (pools reflect strictly-earlier days only; same-day
+positive collisions excluded — `StreamingNegatives` in `src/tgn/train.py`,
+property tests in `tests/test_tgn_negatives.py`). "Hard" negatives are 50%
+same-source past partners / 50% previously-seen global pairs unless noted.
+
+| config | link loss | negatives per positive | random | historical | inductive | MRR | hits@10 |
+|---|---|---|---|---|---|---|---|
+| L0 baseline (5 seeds) | BCE | 1 uniform | 0.9640 | 0.6505 | 0.5534 | 0.0657 | 0.1302 |
+| L1 | BCE | 1, hard 50% | 0.9805 | 0.8798 | 0.5927 | 0.0559 | 0.1069 |
+| L2 | softmax CE | 5 uniform | 0.9494 | 0.6030 | 0.5567 | **0.0801** | **0.1562** |
+| L3 | softmax CE | 5, hard 50% | 0.9675 | 0.9024 | 0.6067 | 0.0494 | 0.0976 |
+| L4 | softmax CE | 5, hard 80% (src-heavy) | 0.9636 | **0.9114** | 0.5890 | 0.0476 | 0.0935 |
+| L5 | CE + CE (two-term) | 5 uniform + 5 hard | 0.9338 | 0.7302 | 0.5947 | 0.0511 | 0.1002 |
+| **L3 headline (5 seeds)** | softmax CE | 5, hard 50% | **0.9679 ± 0.0018** | **0.8990 ± 0.0027** | **0.5994 ± 0.0072** | 0.0456 | 0.0925 |
+
+(L1–L5 rows are 2-seed scoping runs; the headline row is the full 5-seed
+protocol. Early stopping selects on validation AP against negatives drawn from
+the *training* distribution — with hard negatives this fires at 11–20 epochs.)
+
+## Headline (L3, 5 seeds) vs the field, AU-ROC
+
+| NS strategy | EdgeBank_tw | TGAT | TGN (old loss) | TGN (hard-CE loss) |
+|---|---|---|---|---|
+| random | 0.7221 | 0.9559 | 0.9640 | **0.9679 ± 0.0018** |
+| historical | 0.6496 | 0.7045 | 0.6505 | **0.8990 ± 0.0027** |
+| inductive | 0.4700 | 0.5513 | 0.5534 | **0.5994 ± 0.0072** |
+
+Strata: the historical unseen-pair AU-ROC jumps 0.5821 → 0.8979 (±0.003) —
+the old loss's biggest failure mode is simply gone; seen 0.7497 → 0.9009.
+AP moves likewise (historical 0.5941 → 0.8938). Amount is unchanged
+(RMSE 1.6329 vs 1.6255; still beats persistence 1.9457) — loss changes on the
+link head did not disturb the amount head.
+
+## What each ingredient does (the ablation's actual finding)
+
+1. **Hard negatives fix pairwise discrimination, at zero random-NS cost.**
+   Adding 50% hard negatives to plain BCE (L1) already lifts historical
+   0.65 → 0.88 *and* random 0.964 → 0.981. The model was always capable of
+   telling "active today" from "stale pair" — it had just never been asked.
+2. **Multi-negative softmax alone shifts a different metric.** L2 (5 uniform
+   negatives, CE) is the only config that improves deployment MRR
+   (0.0657 → 0.0801, +22%; hits@10 +20%) but leaves historical at baseline.
+   Global-calibration pressure and pair-discrimination pressure are distinct
+   signals.
+3. **They do not currently combine.** In a single softmax the hard negatives
+   dominate the gradient (L3/L4 ≈ L1 on MRR); an explicit two-term split (L5)
+   underperformed on both fronts — likely because the balanced-mixture early
+   stopping favors neither objective and stops very early (11–18 epochs).
+4. **Deployment full-candidate ranking remains recency's turf** (0.354 MRR vs
+   ≤0.08 for every learned config). Loss shaping moves it ±30%, not 5×. This
+   now looks like a feature/architecture limit, not a training-signal limit —
+   pair-recency features or a pair-level memory (both TASK.md §7 deferred)
+   are the motivated next step, and an L2-style multi-negative CE is the
+   right training loss to pair them with.
+
+## Verdict
+
+The §1 hypothesis fails against the *architecture* but the diagnosis behind it
+was right: with a task-appropriate loss — sampled-softmax ranking CE with half
+the negatives drawn from the evaluation-relevant hard distributions — the
+learned memory is worth +0.25 historical AU-ROC over its own random-negative
+baseline and +0.19 over TGAT, making TGN (hard-CE) the strongest model in this
+project on every DGB negative-sampling strategy. The improvement is verified
+on the unmodified evaluation pipeline (EdgeBank recomputation bit-identical
+across runs), across 5 seeds, with seed-level std an order of magnitude
+smaller than the gains. Honest cost: deployment MRR drops 0.066 → 0.046
+(recency-gap unchanged); use the L2 loss variant if deployment ranking is the
+target metric.
+
+Reproduction (env prefix and parquet path as above):
+
+```
+... python -m tgn.train --seeds 0 1 2 3 4 --out figures/tgn_hard_models \
+      --loss ce --n-neg 5 --hard-frac 0.5
+... python -m tgn.evaluate --models figures/tgn_hard_models --out figures/tgn_hard_results.json
+... python -m tgn.ranking  --models figures/tgn_hard_models --out figures/tgn_hard_ranking.json
+... python -m tgn.plot_loss_compare figures/tgat_results.json \
+      figures/tgn_results.json figures/tgn_hard_results.json figures/tgn_loss_bar.png
+```
+
+(Note: in `figures/tgn_hard_training_curves.png` the loss panel's
+"BCE (link)" label is the shared plotting schema's name for the link-loss
+term; for this run it is the softmax CE. The AP/AU-ROC panels are measured
+against hard-mixture negatives — not comparable to the baseline's
+random-negative curves.)
