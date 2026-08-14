@@ -17,7 +17,7 @@ from tgat.evaluate import (_pair_sets, amount_baselines, build_negative_pools,
 from tgat.neighbors import NeighborStore
 from tgat.train import auroc, average_precision
 
-from .model import TGN
+from .model import build_from_checkpoint
 from .streaming import score_pairs_streaming
 
 
@@ -76,10 +76,9 @@ def main():
                     auroc(y, np.r_[ps, nsc]))
                 res["edgebank"][variant][strategy]["ap"].append(
                     average_precision(y, np.r_[ps, nsc]))
-            model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                        dim=args.dim).to(device)
-            model.load_state_dict(torch.load(
-                Path(args.models) / f"tgn_seed{seed}.pt", map_location=device))
+            model = build_from_checkpoint(
+                Path(args.models) / f"tgn_seed{seed}.pt", edge_feat_dim=store.F,
+                raw_feat_dim=g.edge_feat.shape[1], dim=args.dim, device=device)
             ps, nsc, pos_amt = tgn_scores(model, g, store, negs, device)
             sc = np.r_[ps, nsc]
             res["tgn"][strategy]["auroc"].append(auroc(y, sc))

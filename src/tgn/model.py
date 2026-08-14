@@ -14,19 +14,29 @@ from tgat.model import TemporalAttention, TimeEncoder
 
 class TGN(nn.Module):
     def __init__(self, edge_feat_dim: int, raw_feat_dim: int = 6,
-                 dim: int = 100, n_heads: int = 2, dropout: float = 0.1):
+                 dim: int = 100, n_heads: int = 2, dropout: float = 0.1,
+                 pair_feat_dim: int = 0):
         super().__init__()
         self.dim = dim
+        self.pair_feat_dim = pair_feat_dim
         self.time_enc = TimeEncoder(dim)
         # raw message: [own_mem | other_mem | timeenc(dt) | edge_feat | dir_flag]
         self.gru = nn.GRUCell(2 * dim + dim + raw_feat_dim + 1, dim)
         self.attn = TemporalAttention(dim, edge_feat_dim, dim, n_heads, dropout)
+        # pair_feat_dim > 0 appends streaming pair-recency features
+        # (tgn.recency) to the link head input; the amount head is unchanged
         self.link_head = nn.Sequential(
-            nn.Linear(2 * dim, dim), nn.ReLU(), nn.Dropout(dropout),
-            nn.Linear(dim, 1))
+            nn.Linear(2 * dim + pair_feat_dim, dim), nn.ReLU(),
+            nn.Dropout(dropout), nn.Linear(dim, 1))
         self.amt_head = nn.Sequential(
             nn.Linear(2 * dim, dim), nn.ReLU(), nn.Dropout(dropout),
             nn.Linear(dim, 1))
+
+    def link_logit(self, zs, zd, pair_feat=None):
+        pair = torch.cat([zs, zd], dim=-1)
+        if self.pair_feat_dim:
+            pair = torch.cat([pair, pair_feat], dim=-1)
+        return self.link_head(pair).squeeze(-1)
 
     def init_memory(self, n_nodes: int, device):
         return (torch.zeros(n_nodes, self.dim, device=device),
@@ -69,8 +79,21 @@ class TGN(nn.Module):
                          self.time_enc(torch.from_numpy(dt).to(device)),
                          torch.from_numpy(mask).to(device))
 
-    def forward(self, src_nodes, dst_nodes, days, mem, store, device):
+    def forward(self, src_nodes, dst_nodes, days, mem, store, device,
+                pair_feat=None):
         zs = self.embed(src_nodes, days, mem, store, device)
         zd = self.embed(dst_nodes, days, mem, store, device)
         pair = torch.cat([zs, zd], dim=-1)
-        return self.link_head(pair).squeeze(-1), self.amt_head(pair).squeeze(-1)
+        return (self.link_logit(zs, zd, pair_feat),
+                self.amt_head(pair).squeeze(-1))
+
+
+def build_from_checkpoint(path, edge_feat_dim: int, raw_feat_dim: int,
+                          dim: int, device) -> TGN:
+    """Load a checkpoint, inferring pair_feat_dim from the link head width."""
+    sd = torch.load(path, map_location=device)
+    pair_feat_dim = int(sd["link_head.0.weight"].shape[1]) - 2 * dim
+    model = TGN(edge_feat_dim=edge_feat_dim, raw_feat_dim=raw_feat_dim,
+                dim=dim, pair_feat_dim=pair_feat_dim).to(device)
+    model.load_state_dict(sd)
+    return model

@@ -17,7 +17,8 @@ from tgat.data import DailyGraph, load_daily_graph
 from tgat.evaluate import _pair_sets
 from tgat.neighbors import NeighborStore
 
-from .model import TGN
+from .model import build_from_checkpoint
+from .recency import PairRecency
 from .streaming import iter_day_embeddings
 
 HITS = (1, 10, 100)
@@ -103,14 +104,25 @@ def tgn_ranking(model, g: DailyGraph, store, device, chunk=4096) -> dict:
     by_day = _test_day_positives(g)
     n_test = len(g.src) - g.val_end
     ranks = np.empty(n_test, np.float64)
+    rec = PairRecency(g.n_nodes) if model.pair_feat_dim else None
+    ev_i, E = 0, len(g.src)
     for T, Z in iter_day_embeddings(model, g, store, device, by_day.keys()):
+        if rec is not None:
+            while ev_i < E and g.day[ev_i] < T:
+                rec.observe_day(g.src[ev_i:ev_i + 1], g.dst[ev_i:ev_i + 1],
+                                int(g.day[ev_i]))
+                ev_i += 1
         for s, entries in by_day[T].items():
             zs = Z[s].unsqueeze(0)
+            pf = None
+            if rec is not None:
+                pf = torch.from_numpy(rec.features_all(s, T)).to(device)
             scores = []
             for lo in range(0, g.n_nodes, chunk):
                 zc = Z[lo:lo + chunk]
-                pair = torch.cat([zs.expand(len(zc), -1), zc], dim=1)
-                scores.append(model.link_head(pair).squeeze(-1))
+                scores.append(model.link_logit(
+                    zs.expand(len(zc), -1), zc,
+                    None if pf is None else pf[lo:lo + chunk]))
             scores = torch.cat(scores).cpu().numpy()
             dsts = [d for _, d in entries]
             for j, d in entries:
@@ -143,10 +155,9 @@ def main():
            "tgn": {}, "n_test": rec["n_test"],
            "n_candidates": rec["n_candidates"]}
     for seed in args.seeds:
-        model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                    dim=args.dim).to(device)
-        model.load_state_dict(torch.load(
-            Path(args.models) / f"tgn_seed{seed}.pt", map_location=device))
+        model = build_from_checkpoint(
+            Path(args.models) / f"tgn_seed{seed}.pt", edge_feat_dim=store.F,
+            raw_feat_dim=g.edge_feat.shape[1], dim=args.dim, device=device)
         r = tgn_ranking(model, g, store, device)
         for metric, strata in r.items():
             if not metric.startswith(("mrr", "hits")):

@@ -7,6 +7,8 @@ same streaming as tgat.evaluate.edgebank_scores. Queries never enter memory.
 import numpy as np
 import torch
 
+from .recency import PairRecency
+
 
 def day_ranges(day: np.ndarray, n_days: int | None = None) -> np.ndarray:
     if n_days is None:
@@ -18,6 +20,7 @@ def day_ranges(day: np.ndarray, n_days: int | None = None) -> np.ndarray:
 def score_pairs_streaming(model, g, store, device, s, d, t, batch=500):
     model.eval()
     mem, last = model.init_memory(g.n_nodes, device)
+    rec = PairRecency(g.n_nodes) if model.pair_feat_dim else None
     off = day_ranges(g.day, g.n_days)
     logit = np.empty(len(s), np.float32)
     amt = np.empty(len(s), np.float32)
@@ -30,7 +33,10 @@ def score_pairs_streaming(model, g, store, device, s, d, t, batch=500):
             qj += 1
         for lo in range(qi, qj, batch):
             idx = order[lo:lo + batch]
-            lg, am = model(s[idx], d[idx], t[idx], mem, store, device)
+            pf = None
+            if rec is not None:
+                pf = torch.from_numpy(rec.features(s[idx], d[idx], T)).to(device)
+            lg, am = model(s[idx], d[idx], t[idx], mem, store, device, pf)
             logit[idx] = lg.cpu().numpy()
             amt[idx] = am.cpu().numpy()
         qi = qj
@@ -40,6 +46,8 @@ def score_pairs_streaming(model, g, store, device, s, d, t, batch=500):
                 mem, last = model.apply_messages(
                     mem, last, g.src[elo:ehi], g.dst[elo:ehi], T,
                     g.edge_feat[elo:ehi])
+                if rec is not None:
+                    rec.observe_day(g.src[elo:ehi], g.dst[elo:ehi], T)
     return logit, amt
 
 

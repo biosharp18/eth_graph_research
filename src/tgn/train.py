@@ -22,6 +22,7 @@ from tgat.neighbors import NeighborStore
 from tgat.train import _pos_pairs_by_day, auroc, average_precision
 
 from .model import TGN
+from .recency import FEAT_DIM, PairRecency
 from .streaming import day_ranges, score_pairs_streaming
 
 
@@ -128,7 +129,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               batch=200, lam=1.0, lr=1e-4, dim=100, k=20,
               train_metric_sample=3000, log_every=0,
               loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
-              n_neg_hard=0, beta_hard=1.0):
+              n_neg_hard=0, beta_hard=1.0, pair_feat=False):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -139,7 +140,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                dim=dim).to(device)
+                dim=dim, pair_feat_dim=FEAT_DIM if pair_feat else 0).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     pos_by_day = _pos_pairs_by_day(g)
     off = day_ranges(g.day, g.n_days)
@@ -187,6 +188,9 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                                      hard_frac, src_frac)
         hard_sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
                                           1.0, src_frac)
+        # recency features advance with the samplers: day T sees days <= T-1,
+        # matching the streaming scorer's discipline
+        rec = PairRecency(g.n_nodes) if pair_feat else None
         bces, hubers, totals = [], [], []
         for T in train_days:
             # clamp to the split boundary: real data is day-snapped, but toy
@@ -219,12 +223,17 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                 zs, zd = Z[:B], Z[B:2 * B]
                 zns = Z[2 * B:2 * B + B * K]
                 znd = Z[2 * B + B * K:]
-                logit_p = model.link_head(
-                    torch.cat([zs, zd], dim=-1)).squeeze(-1)
+                pf_p = pf_n = None
+                if rec is not None:
+                    pf_p = torch.from_numpy(
+                        rec.features(s, d, int(T))).to(device)
+                    pf_n = torch.from_numpy(
+                        rec.features(ns.ravel(), nds.ravel(),
+                                     int(T))).to(device)
+                logit_p = model.link_logit(zs, zd, pf_p)
                 amt_p = model.amt_head(
                     torch.cat([zs, zd], dim=-1)).squeeze(-1)
-                logit_n = model.link_head(
-                    torch.cat([zns, znd], dim=-1)).squeeze(-1).view(B, K)
+                logit_n = model.link_logit(zns, znd, pf_n).view(B, K)
                 if n_neg_hard > 0:
                     link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
                                  + beta_hard * softmax_ce_loss(
@@ -250,6 +259,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                         g.edge_feat[plo:phi])
             pending = (dlo, dhi, int(T))
             sampler.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi])
+            if rec is not None:
+                rec.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi], int(T))
 
         train_ap, train_auroc, val_ap, val_auroc = epoch_metrics()
         history.append({
@@ -294,6 +305,7 @@ def main():
     ap_.add_argument("--src-frac", type=float, default=0.5)
     ap_.add_argument("--n-neg-hard", type=int, default=0)
     ap_.add_argument("--beta-hard", type=float, default=1.0)
+    ap_.add_argument("--pair-feat", action="store_true")
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -309,7 +321,8 @@ def main():
                                 hard_frac=args.hard_frac,
                                 src_frac=args.src_frac,
                                 n_neg_hard=args.n_neg_hard,
-                                beta_hard=args.beta_hard)
+                                beta_hard=args.beta_hard,
+                                pair_feat=args.pair_feat)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
