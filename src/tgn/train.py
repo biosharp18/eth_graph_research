@@ -127,7 +127,14 @@ def softmax_ce_loss(pos_logit, neg_logit):
 def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               batch=200, lam=1.0, lr=1e-4, dim=100, k=20,
               train_metric_sample=3000, log_every=0,
-              loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5):
+              loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
+              n_neg_hard=0, beta_hard=1.0):
+    """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
+    uniform negatives plus beta_hard * CE against n_neg_hard all-hard
+    negatives (src_frac splits hard between same-source partners and global
+    historical pairs). Keeping the two softmaxes separate stops the hard
+    negatives from drowning out the global-calibration gradient (measured:
+    single mixed softmax trades MRR for historical AU-ROC)."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
@@ -143,14 +150,16 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     # random-negative val_ap from other configs)
     rng_eval = np.random.default_rng(seed + 10_000)
     val_sl = slice(g.train_end, g.val_end)
+    # two-term mode balances val negatives 50/50 random/hard
+    val_hard_frac = 0.5 if n_neg_hard > 0 else hard_frac
     val_ns, val_nd = sample_negatives_streaming(
-        g, rng_eval, hard_frac, src_frac, g.train_end, g.val_end, n_neg=1)
+        g, rng_eval, val_hard_frac, src_frac, g.train_end, g.val_end, n_neg=1)
 
     n_tm = min(train_metric_sample, g.train_end)
     tm_idx = np.sort(rng_eval.choice(g.train_end, size=n_tm, replace=False))
     tm_s, tm_d, tm_t = g.src[tm_idx], g.dst[tm_idx], g.day[tm_idx]
     all_ns, all_nd = sample_negatives_streaming(
-        g, rng_eval, hard_frac, src_frac, 0, g.train_end, n_neg=1)
+        g, rng_eval, val_hard_frac, src_frac, 0, g.train_end, n_neg=1)
     tm_ns, tm_nd = all_ns[tm_idx, 0], all_nd[tm_idx, 0]
 
     train_days = np.unique(g.day[:g.train_end])
@@ -176,6 +185,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         # negative pools rebuilt each epoch so day-T sampling is strictly-past
         sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
                                      hard_frac, src_frac)
+        hard_sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
+                                          1.0, src_frac)
         bces, hubers, totals = [], [], []
         for T in train_days:
             # clamp to the split boundary: real data is day-snapped, but toy
@@ -186,6 +197,11 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                 s, d = g.src[blo:bhi], g.dst[blo:bhi]
                 B = bhi - blo
                 ns, nds = sampler.sample(s, d, int(T), n_neg=n_neg)
+                if n_neg_hard > 0:
+                    hs, hds = hard_sampler.sample(s, d, int(T),
+                                                  n_neg=n_neg_hard)
+                    ns = np.concatenate([ns, hs], axis=1)
+                    nds = np.concatenate([nds, hds], axis=1)
                 if pending is not None:
                     plo, phi, pday = pending
                     mem_eff, _ = model.apply_messages(
@@ -195,20 +211,25 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                     mem_eff = mem
                 opt.zero_grad()
                 # embed each unique node once (all queries share day T)
+                K = ns.shape[1]  # n_neg (+ n_neg_hard in two-term mode)
                 nodes = np.concatenate([s, d, ns.ravel(), nds.ravel()])
                 uniq, inv = np.unique(nodes, return_inverse=True)
                 Z = model.embed(uniq, np.full(len(uniq), int(T)), mem_eff,
                                 store, device)[inv]
                 zs, zd = Z[:B], Z[B:2 * B]
-                zns = Z[2 * B:2 * B + B * n_neg]
-                znd = Z[2 * B + B * n_neg:]
+                zns = Z[2 * B:2 * B + B * K]
+                znd = Z[2 * B + B * K:]
                 logit_p = model.link_head(
                     torch.cat([zs, zd], dim=-1)).squeeze(-1)
                 amt_p = model.amt_head(
                     torch.cat([zs, zd], dim=-1)).squeeze(-1)
                 logit_n = model.link_head(
-                    torch.cat([zns, znd], dim=-1)).squeeze(-1).view(B, n_neg)
-                if loss == "ce":
+                    torch.cat([zns, znd], dim=-1)).squeeze(-1).view(B, K)
+                if n_neg_hard > 0:
+                    link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
+                                 + beta_hard * softmax_ce_loss(
+                                     logit_p, logit_n[:, n_neg:]))
+                elif loss == "ce":
                     link_loss = softmax_ce_loss(logit_p, logit_n)
                 else:
                     link_loss = (F.binary_cross_entropy_with_logits(
@@ -271,6 +292,8 @@ def main():
     ap_.add_argument("--n-neg", type=int, default=1)
     ap_.add_argument("--hard-frac", type=float, default=0.0)
     ap_.add_argument("--src-frac", type=float, default=0.5)
+    ap_.add_argument("--n-neg-hard", type=int, default=0)
+    ap_.add_argument("--beta-hard", type=float, default=1.0)
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -284,7 +307,9 @@ def main():
                                 patience=args.patience, log_every=1,
                                 loss=args.loss, n_neg=args.n_neg,
                                 hard_frac=args.hard_frac,
-                                src_frac=args.src_frac)
+                                src_frac=args.src_frac,
+                                n_neg_hard=args.n_neg_hard,
+                                beta_hard=args.beta_hard)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "

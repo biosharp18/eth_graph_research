@@ -109,6 +109,18 @@ def test_softmax_ce_loss_hand_computed():
     assert abs(float(loss) - expect) < 1e-6
 
 
+def test_two_term_loss_runs_and_is_deterministic():
+    g = bursty_graph()
+    outs = []
+    for _ in range(2):
+        _, info = train_one(g, seed=3, device=torch.device("cpu"),
+                            epochs=2, batch=200, dim=16, k=3,
+                            loss="ce", n_neg=2, n_neg_hard=2, beta_hard=0.5)
+        outs.append(info)
+    assert outs[0] == outs[1]
+    assert len(outs[0]["history"]) == 2
+
+
 def test_smoke_hard_ce_learns_recency():
     g = bursty_graph()
     # measured curve: hard-negative val AP 0.53 -> 0.69 over ~10 epochs on
