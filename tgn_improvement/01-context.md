@@ -46,7 +46,7 @@ hurdle target per candidate `(source, destination, day)`:
 |---|---|---|---|---|
 | EdgeBank_inf | 0.7649 | 0.2649 | 0.5128 | — |
 | EdgeBank_tw | 0.7221 | 0.6496 | 0.4700 | — |
-| TGAT (2-layer, d=100) | 0.9559 ± 0.0032 | 0.7045 ± 0.0090 | 0.5513 ± 0.0065 | ~0.06 (earlier glimpse) |
+| TGAT (2-layer, d=100) | 0.9559 ± 0.0032 | 0.7045 ± 0.0090 | 0.5513 ± 0.0065 | 0.0479 ± 0.0059 (measured 2026-08-14, `figures/tgat_ranking.json`) |
 | TGN baseline (BCE, 1 random neg) | 0.9640 ± 0.0018 | 0.6505 ± 0.0154 | 0.5534 ± 0.0079 | 0.0657 |
 | **TGN hard-CE (winner)** | **0.9679 ± 0.0018** | **0.8990 ± 0.0027** | **0.5994 ± 0.0072** | 0.0456 |
 | recency heuristic | — | — | — | **0.3540** |
