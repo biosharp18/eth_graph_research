@@ -15,24 +15,41 @@ from tgat.model import TemporalAttention, TimeEncoder
 class TGN(nn.Module):
     def __init__(self, edge_feat_dim: int, raw_feat_dim: int = 6,
                  dim: int = 100, n_heads: int = 2, dropout: float = 0.1,
-                 pair_feat_dim: int = 0):
+                 pair_feat_dim: int = 0, head: str = "mlp"):
         super().__init__()
         self.dim = dim
         self.pair_feat_dim = pair_feat_dim
+        self.head = head
         self.time_enc = TimeEncoder(dim)
         # raw message: [own_mem | other_mem | timeenc(dt) | edge_feat | dir_flag]
         self.gru = nn.GRUCell(2 * dim + dim + raw_feat_dim + 1, dim)
         self.attn = TemporalAttention(dim, edge_feat_dim, dim, n_heads, dropout)
         # pair_feat_dim > 0 appends streaming pair-recency features
         # (tgn.recency) to the link head input; the amount head is unchanged
-        self.link_head = nn.Sequential(
-            nn.Linear(2 * dim + pair_feat_dim, dim), nn.ReLU(),
-            nn.Dropout(dropout), nn.Linear(dim, 1))
+        if head == "bilinear":
+            # multiplicative source-candidate interaction: sharper cross-
+            # source calibration than the concat-MLP, feature path additive
+            self.bilin_u = nn.Linear(dim, dim, bias=False)
+            self.bilin_v = nn.Linear(dim, dim, bias=False)
+            if pair_feat_dim:
+                self.feat_mlp = nn.Sequential(
+                    nn.Linear(pair_feat_dim, dim // 2), nn.ReLU(),
+                    nn.Linear(dim // 2, 1))
+        else:
+            self.link_head = nn.Sequential(
+                nn.Linear(2 * dim + pair_feat_dim, dim), nn.ReLU(),
+                nn.Dropout(dropout), nn.Linear(dim, 1))
         self.amt_head = nn.Sequential(
             nn.Linear(2 * dim, dim), nn.ReLU(), nn.Dropout(dropout),
             nn.Linear(dim, 1))
 
     def link_logit(self, zs, zd, pair_feat=None):
+        if self.head == "bilinear":
+            logit = (self.bilin_u(zs) * self.bilin_v(zd)).sum(-1) \
+                / self.dim ** 0.5
+            if self.pair_feat_dim:
+                logit = logit + self.feat_mlp(pair_feat).squeeze(-1)
+            return logit
         pair = torch.cat([zs, zd], dim=-1)
         if self.pair_feat_dim:
             pair = torch.cat([pair, pair_feat], dim=-1)
@@ -90,10 +107,16 @@ class TGN(nn.Module):
 
 def build_from_checkpoint(path, edge_feat_dim: int, raw_feat_dim: int,
                           dim: int, device) -> TGN:
-    """Load a checkpoint, inferring pair_feat_dim from the link head width."""
+    """Load a checkpoint, inferring head type and pair_feat_dim from keys."""
     sd = torch.load(path, map_location=device)
-    pair_feat_dim = int(sd["link_head.0.weight"].shape[1]) - 2 * dim
+    if "bilin_u.weight" in sd:
+        head = "bilinear"
+        pair_feat_dim = (int(sd["feat_mlp.0.weight"].shape[1])
+                         if "feat_mlp.0.weight" in sd else 0)
+    else:
+        head = "mlp"
+        pair_feat_dim = int(sd["link_head.0.weight"].shape[1]) - 2 * dim
     model = TGN(edge_feat_dim=edge_feat_dim, raw_feat_dim=raw_feat_dim,
-                dim=dim, pair_feat_dim=pair_feat_dim).to(device)
+                dim=dim, pair_feat_dim=pair_feat_dim, head=head).to(device)
     model.load_state_dict(sd)
     return model

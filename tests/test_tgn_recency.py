@@ -178,3 +178,29 @@ def test_bucket_features():
         allf[2], tr.features(np.array([0]), np.array([2]), day=6)[0])
     cross = tr.features_cross(np.array([0, 1]), np.array([2, 3]), day=6)
     np.testing.assert_array_equal(cross[0, 0], allf[2])
+
+
+def test_bilinear_head_train_and_checkpoint_roundtrip(tmp_path):
+    from tests.test_tgat_train import toy_graph
+    from tgn.train import train_one
+
+    g = toy_graph(E=400, n_nodes=40, n_days=20)
+    model, info = train_one(g, seed=0, device=torch.device("cpu"), epochs=2,
+                            batch=100, dim=16, k=3, loss="ce", n_neg=2,
+                            pair_feat=True, head="bilinear", select="combo")
+    assert np.isfinite(info["history"][-1]["val_ap"])
+    assert "val_mrr" in info["history"][-1]
+    p = tmp_path / "b.pt"
+    torch.save(model.state_dict(), p)
+    m2 = build_from_checkpoint(p, edge_feat_dim=7, raw_feat_dim=6, dim=16,
+                               device=torch.device("cpu"))
+    assert m2.head == "bilinear" and m2.pair_feat_dim == FEAT_DIM
+    # scores identical after roundtrip
+    from tgn.streaming import score_pairs_streaming
+    from tgat.neighbors import NeighborStore
+    store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=3)
+    a = score_pairs_streaming(model, g, store, torch.device("cpu"),
+                              g.src[:5], g.dst[:5], g.day[:5] + 1)[0]
+    b = score_pairs_streaming(m2, g, store, torch.device("cpu"),
+                              g.src[:5], g.dst[:5], g.day[:5] + 1)[0]
+    np.testing.assert_array_equal(a, b)

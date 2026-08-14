@@ -150,7 +150,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               n_neg_hard=0, beta_hard=1.0, pair_feat=False,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
               val_mrr_cands=100, in_batch=False, pop_frac=0.0,
-              pair_feat_dim=FEAT_DIM, pop_window=0):
+              pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp"):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -176,7 +176,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                dim=dim,
+                dim=dim, head=head,
                 pair_feat_dim=pair_feat_dim if pair_feat else 0).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     pos_by_day = _pos_pairs_by_day(g)
@@ -225,7 +225,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         qs = [tm_s, tm_ns, g.src[val_sl], val_ns[:, 0]]
         qd = [tm_d, tm_nd, g.dst[val_sl], val_nd[:, 0]]
         qt = [tm_t, tm_t, g.day[val_sl], g.day[val_sl]]
-        if select == "mrr":
+        if select in ("mrr", "combo"):
             C = val_mrr_cands
             ms = np.repeat(g.src[mrr_ev], C)
             qs += [g.src[mrr_ev], ms]
@@ -239,7 +239,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         va_y = np.r_[np.ones(v), np.zeros(v)]
         tr_sc, va_sc = lg[:2 * n], lg[2 * n:2 * n + 2 * v]
         val_mrr = (sampled_val_mrr(lg[2 * n + 2 * v:])
-                   if select == "mrr" else None)
+                   if select in ("mrr", "combo") else None)
         return (average_precision(tr_y, tr_sc), auroc(tr_y, tr_sc),
                 average_precision(va_y, va_sc), auroc(va_y, va_sc), val_mrr)
 
@@ -363,7 +363,14 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         if val_mrr is not None:
             h["val_mrr"] = val_mrr
         history.append(h)
-        sel_metric = val_mrr if select == "mrr" else val_ap
+        if select == "mrr":
+            sel_metric = val_mrr
+        elif select == "combo":
+            # geometric mean: excel at BOTH the matched-negative paired
+            # metric and the sampled ranking metric, penalizing either collapse
+            sel_metric = (max(val_mrr, 0.0) * max(val_ap, 0.0)) ** 0.5
+        else:
+            sel_metric = val_ap
         if log_every and epoch % log_every == 0:
             print(f"[seed {seed}] epoch {epoch} loss {np.mean(totals):.4f} "
                   f"val_ap {val_ap:.4f}"
@@ -403,7 +410,8 @@ def main():
     ap_.add_argument("--beta-hard", type=float, default=1.0)
     ap_.add_argument("--pair-feat", action="store_true")
     ap_.add_argument("--hard-hinge", type=float, default=0.0)
-    ap_.add_argument("--select", choices=["ap", "mrr"], default="ap")
+    ap_.add_argument("--select", choices=["ap", "mrr", "combo"], default="ap")
+    ap_.add_argument("--head", choices=["mlp", "bilinear"], default="mlp")
     ap_.add_argument("--in-batch", action="store_true")
     ap_.add_argument("--pop-frac", type=float, default=0.0)
     ap_.add_argument("--pop-window", type=int, default=0)
@@ -430,7 +438,8 @@ def main():
                                 select=args.select, in_batch=args.in_batch,
                                 pop_frac=args.pop_frac,
                                 pop_window=args.pop_window,
-                                pair_feat_dim=args.pair_feat_dim)
+                                pair_feat_dim=args.pair_feat_dim,
+                                head=args.head)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
