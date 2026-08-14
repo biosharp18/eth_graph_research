@@ -136,3 +136,13 @@ Reproduction of the MRR-max headline:
 3. TGB-style multi-negative evaluation (unchanged from 04's list).
 4. Pair-level learned memory (04's idea 2) is now lower value: the static
    Δt features already deliver most of what it promised.
+
+## Artifact mirror (2026-08-14, user request)
+
+Everything from this campaign now also lives under `tgn_improvement/figures/`,
+**including model checkpoints**: headline 5-seed dirs
+(`tgn_pfpop_{mrr,bal,hist}_models/`), every 2-seed scoping dir (`tgn_pf_*/`),
+the revisit probes (`imp_*/`, incl. `imp_soup/` weight averages), and the
+per-event forensics JSONs (`diagnostics/diag_*.json`, produced by
+`tgn.diagnose`). Checkpoint files remain gitignored per the repo convention —
+they exist on NFS, not in git; JSONs and figures are committed.
