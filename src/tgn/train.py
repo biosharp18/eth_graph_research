@@ -23,7 +23,8 @@ from tgat.neighbors import NeighborStore
 from tgat.train import _pos_pairs_by_day, auroc, average_precision
 
 from .model import TGN
-from .recency import FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL, PairRecency
+from .recency import (FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
+                      FEAT_DIM_GLOBAL_BUCKETS, PairRecency)
 from .streaming import day_ranges, score_pairs_streaming
 
 
@@ -448,7 +449,8 @@ def main():
     ap_.add_argument("--nov-window", type=int, default=30)
     ap_.add_argument("--n-layers", type=int, default=1, choices=[1, 2])
     ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
-                     choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL])
+                     choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
+                              FEAT_DIM_GLOBAL_BUCKETS])
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 

@@ -1,0 +1,2 @@
+[seed 0] epoch 0 loss 1.8867 val_ap 0.7961 val_mrr 0.4970
+[seed 0] epoch 1 loss 1.6215 val_ap 0.8211 val_mrr 0.5478

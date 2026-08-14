@@ -122,3 +122,65 @@ Scoping launches (GPU 0, 2 seeds each, out under `tgn_global/figures/`):
 - A2 `g_feat11_nov20`: as A1 but pop .4 + nov .2 (novelty negatives)
 - B1 `g_twohop`: pfpop_mrr recipe exactly (4-dim features) + n-layers 2
   (isolates longer message passing; comparator the same 5-seed reference)
+
+## 2026-08-14 — Phase A scoping results (2 seeds, frozen eval + ranking)
+
+Reference `tgn_pfpop_mrr` (5 seeds): rand 0.9798, hist 0.8266, ind 0.5767
+(seen 0.6603 / unseen 0.5177), MRR 0.3314, h@1 0.2582, h@10 0.4622,
+h@100 0.5993. Recency: MRR 0.3540, h@1 0.2777, h@10 0.4734, h@100 0.5266.
+
+| config | rand | hist | ind (seen/uns) | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| A1 `g_feat11` (feats only) | 0.9723 | 0.8438 | 0.5585 (.628/.510) | 0.3064 | 0.2379 | 0.4294 | 0.5818 |
+| A2 `g_feat11_nov20` (+nov .2) | 0.9359 | 0.8245 | **0.6156 (.636/.599)** | 0.2151 | 0.1537 | 0.3318 | 0.5254 |
+
+Readings:
+1. **Features alone do not move inductive** (0.5585) — they get spent on the
+   training objective (hist +0.017 over reference). The information channel
+   exists now, but the loss never asks the inductive question. Exactly the
+   calibration mechanism predicted.
+2. **Novelty negatives break the record: ind 0.6156** (prior project best
+   0.6022, old headline 0.5994), and for the FIRST time both strata are high
+   simultaneously (0.636/0.599 — every earlier config mirror-traded them,
+   e.g. reference 0.660/0.518). The mechanism works.
+3. Price at nov=.2: MRR −0.12, random −0.04. The novelty slice deflates
+   recently-first-seen pairs, which are disproportionately the true next
+   destinations in deployment ranking. A dial, not a wall (hypothesis).
+
+Follow-up launches (2 seeds each): `g_f11_nov10` (h.1 p.5 nov.1, select
+mrr), `g_f11_nov20_cmb` (h.1 p.4 nov.2, select combo), `g_f11_nov30`
+(h.1 p.4 nov.3, select mrr — inductive-max end of the frontier).
+
+## 2026-08-14 — Phase B result: two-hop attention is a NULL
+
+`g_twohop` (pfpop_mrr recipe + `--n-layers 2`, 2 seeds): rand 0.9836,
+hist 0.8195, ind 0.5725 (seen .660/uns .511), MRR 0.3237, h@1 0.2496,
+h@10 0.4602, h@100 0.6078. Every delta vs the 1-hop 5-seed reference is
+within 2-seed noise (±0.008). Longer message passing adds nothing on any
+axis — as Phase 0 predicted (structural signals ≈ silent). The literal
+"longer message passing" form of the architecture hypothesis is rejected;
+the "global awareness" form survives via global-in-time activity features
++ novelty negatives (Phase A). Honest verdict, cleanly isolated.
+
+## 2026-08-14 — novelty-dial frontier (2 seeds each)
+
+| config | rand | hist | ind (seen/uns) | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| ref pfpop_mrr (5s) | .9798 | .8266 | .5767 (.660/.518) | .3314 | .2582 | .4622 | .5993 |
+| nov .1 (`g_f11_nov10`) | .9556 | .8240 | .6028 (.635/.578) | .2468 | .1781 | .3770 | .5543 |
+| nov .2 (`g_feat11_nov20`) | .9359 | .8245 | .6156 (.636/.599) | .2151 | .1537 | .3318 | .5254 |
+| nov .2 combo (`g_f11_nov20_cmb`) | .9366 | .8321 | .6147 (.635/.598) | .2233 | .1601 | .3418 | .5310 |
+| nov .3 (`g_f11_nov30`) | .9023 | .8494 | .6184 (.603/.626) | .1983 | .1517 | .2806 | .4508 |
+
+- Inductive saturates ≈ 0.615–0.618 at nov ≥ .2 (oracle says 0.69 is in the
+  features; the single-scalar calibration wall stops the trained model at
+  ~0.62 — pushing novel-active pairs down inevitably pushes new-pair
+  POSITIVES down too, hence the monotone random/MRR cost).
+- combo selection ≥ mrr selection at same mixture (hist +0.008, MRR +0.008).
+- Chosen headline: **nov .2 + combo** (best inductive per unit MRR cost).
+
+Launched: `g_headline_ind` = h.1 p.4 nov.2, f11, select combo, seeds 0–4;
+`g_f14_mrr` = 14-dim (global+sharp-dt-buckets) h.1 p.5 select mrr, 2 seeds
+(hits@1 probe aimed at the partner-ordering gap vs recency).
+Planned after: 5-seed eval+ranking; `tgn.ensemble` diagnostic of
+pfpop_mrr × headline (07 showed z-avg ensembles keep both parents' bests).

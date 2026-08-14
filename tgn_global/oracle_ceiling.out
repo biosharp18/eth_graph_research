@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/xuanwu-tank/west/gaorory/projects/eth-graph-research/tgn_global/scripts/oracle_ceiling.py", line 85, in <module>
+    main()
+  File "/xuanwu-tank/west/gaorory/projects/eth-graph-research/tgn_global/scripts/oracle_ceiling.py", line 51, in main
+    z = np.load(args.npz, allow_pickle=True)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/tgat-venv/lib/python3.12/site-packages/numpy/lib/_npyio_impl.py", line 454, in load
+    fid = stack.enter_context(open(os.fspath(file), "rb"))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'tgn_global/diag_features.npz'

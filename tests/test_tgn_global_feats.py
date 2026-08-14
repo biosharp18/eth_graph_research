@@ -3,7 +3,8 @@ import numpy as np
 import torch
 
 from tgn.model import TGN, build_from_checkpoint
-from tgn.recency import FEAT_DIM_GLOBAL, WINDOW, PairRecency
+from tgn.recency import (FEAT_DIM_GLOBAL, FEAT_DIM_GLOBAL_BUCKETS, WINDOW,
+                         PairRecency)
 from tgn.train import StreamingNegatives, train_one
 
 from tests.test_tgn_negatives import bursty_graph
@@ -76,6 +77,21 @@ def test_novelty_negatives_are_recent_first_seen_pairs():
     sam2.observe_day(np.array([2]), np.array([12]), day=0)
     ns, nd = sam2.sample(np.zeros(5, np.int64), np.ones(5, np.int64), 20)
     assert ns.shape == (5, 1)
+
+
+def test_global_buckets_layout():
+    tr = PairRecency(n_nodes=6, feat_dim=FEAT_DIM_GLOBAL_BUCKETS)
+    tr.observe_day(np.array([0]), np.array([1]), day=5)
+    f = tr.features(np.array([0]), np.array([1]), day=6)  # pair dt == 1
+    assert f.shape == (1, FEAT_DIM_GLOBAL_BUCKETS)
+    base = PairRecency(n_nodes=6, feat_dim=FEAT_DIM_GLOBAL)
+    base.observe_day(np.array([0]), np.array([1]), day=5)
+    np.testing.assert_array_equal(f[0, :11],
+                                  base.features(np.array([0]),
+                                                np.array([1]), day=6)[0])
+    np.testing.assert_array_equal(f[0, 11:], [1.0, 0.0, 1.0])
+    all_f = tr.features_all(0, day=6)
+    np.testing.assert_array_equal(all_f[1], f[0])
 
 
 def test_checkpoint_roundtrip_global_dim(tmp_path):

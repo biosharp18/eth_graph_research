@@ -1,0 +1,35 @@
+[seed 0] epoch 0 loss 1.9689 val_ap 0.7364 val_mrr 0.3502
+[seed 0] epoch 1 loss 1.7583 val_ap 0.7484 val_mrr 0.4086
+[seed 0] epoch 2 loss 1.6822 val_ap 0.7595 val_mrr 0.4622
+[seed 0] epoch 3 loss 1.6201 val_ap 0.7633 val_mrr 0.4955
+[seed 0] epoch 4 loss 1.5720 val_ap 0.7699 val_mrr 0.5338
+[seed 0] epoch 5 loss 1.5361 val_ap 0.7744 val_mrr 0.5388
+[seed 0] epoch 6 loss 1.5201 val_ap 0.7809 val_mrr 0.5399
+[seed 0] epoch 7 loss 1.4788 val_ap 0.7827 val_mrr 0.5533
+[seed 0] epoch 8 loss 1.4730 val_ap 0.7908 val_mrr 0.5533
+[seed 0] epoch 9 loss 1.4395 val_ap 0.7928 val_mrr 0.5471
+[seed 0] epoch 10 loss 1.4170 val_ap 0.7964 val_mrr 0.5399
+[seed 0] epoch 11 loss 1.3926 val_ap 0.8069 val_mrr 0.5431
+[seed 0] epoch 12 loss 1.3738 val_ap 0.8100 val_mrr 0.5468
+[seed 0] epoch 13 loss 1.3679 val_ap 0.8116 val_mrr 0.5487
+seed 0: best val AP 0.5533 (14 epochs)
+[seed 1] epoch 0 loss 1.9779 val_ap 0.7555 val_mrr 0.4007
+[seed 1] epoch 1 loss 1.7560 val_ap 0.7633 val_mrr 0.4579
+[seed 1] epoch 2 loss 1.6651 val_ap 0.7682 val_mrr 0.4899
+[seed 1] epoch 3 loss 1.6092 val_ap 0.7704 val_mrr 0.5291
+[seed 1] epoch 4 loss 1.5683 val_ap 0.7814 val_mrr 0.5516
+[seed 1] epoch 5 loss 1.5290 val_ap 0.7814 val_mrr 0.5387
+[seed 1] epoch 6 loss 1.5050 val_ap 0.7859 val_mrr 0.5625
+[seed 1] epoch 7 loss 1.4615 val_ap 0.7914 val_mrr 0.5567
+[seed 1] epoch 8 loss 1.4375 val_ap 0.8011 val_mrr 0.5630
+[seed 1] epoch 9 loss 1.4027 val_ap 0.8028 val_mrr 0.5733
+[seed 1] epoch 10 loss 1.3980 val_ap 0.8045 val_mrr 0.5753
+[seed 1] epoch 11 loss 1.3815 val_ap 0.8042 val_mrr 0.5654
+[seed 1] epoch 12 loss 1.3570 val_ap 0.8082 val_mrr 0.5771
+[seed 1] epoch 13 loss 1.3322 val_ap 0.8019 val_mrr 0.5849
+[seed 1] epoch 14 loss 1.3287 val_ap 0.8030 val_mrr 0.5753
+[seed 1] epoch 15 loss 1.3191 val_ap 0.8042 val_mrr 0.5733
+[seed 1] epoch 16 loss 1.3038 val_ap 0.8115 val_mrr 0.5795
+[seed 1] epoch 17 loss 1.2991 val_ap 0.8071 val_mrr 0.5743
+[seed 1] epoch 18 loss 1.3030 val_ap 0.8055 val_mrr 0.5788
+seed 1: best val AP 0.5849 (19 epochs)

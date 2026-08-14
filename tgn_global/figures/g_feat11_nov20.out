@@ -1,0 +1,31 @@
+[seed 0] epoch 0 loss 1.9857 val_ap 0.7224 val_mrr 0.3526
+[seed 0] epoch 1 loss 1.7903 val_ap 0.7342 val_mrr 0.4261
+[seed 0] epoch 2 loss 1.7185 val_ap 0.7397 val_mrr 0.4779
+[seed 0] epoch 3 loss 1.6755 val_ap 0.7450 val_mrr 0.4927
+[seed 0] epoch 4 loss 1.6466 val_ap 0.7488 val_mrr 0.4978
+[seed 0] epoch 5 loss 1.6124 val_ap 0.7525 val_mrr 0.5373
+[seed 0] epoch 6 loss 1.5886 val_ap 0.7605 val_mrr 0.5269
+[seed 0] epoch 7 loss 1.5544 val_ap 0.7678 val_mrr 0.5293
+[seed 0] epoch 8 loss 1.5382 val_ap 0.7675 val_mrr 0.5443
+[seed 0] epoch 9 loss 1.5073 val_ap 0.7723 val_mrr 0.5361
+[seed 0] epoch 10 loss 1.4943 val_ap 0.7819 val_mrr 0.5568
+[seed 0] epoch 11 loss 1.4570 val_ap 0.7873 val_mrr 0.5648
+[seed 0] epoch 12 loss 1.4559 val_ap 0.7887 val_mrr 0.5593
+[seed 0] epoch 13 loss 1.4374 val_ap 0.7864 val_mrr 0.5500
+[seed 0] epoch 14 loss 1.4146 val_ap 0.7928 val_mrr 0.5588
+[seed 0] epoch 15 loss 1.4045 val_ap 0.7934 val_mrr 0.5591
+[seed 0] epoch 16 loss 1.3882 val_ap 0.7939 val_mrr 0.5608
+seed 0: best val AP 0.5648 (17 epochs)
+[seed 1] epoch 0 loss 1.9829 val_ap 0.7365 val_mrr 0.3477
+[seed 1] epoch 1 loss 1.7854 val_ap 0.7416 val_mrr 0.4364
+[seed 1] epoch 2 loss 1.7137 val_ap 0.7409 val_mrr 0.4507
+[seed 1] epoch 3 loss 1.6635 val_ap 0.7491 val_mrr 0.4947
+[seed 1] epoch 4 loss 1.6387 val_ap 0.7574 val_mrr 0.5031
+[seed 1] epoch 5 loss 1.5992 val_ap 0.7598 val_mrr 0.5077
+[seed 1] epoch 6 loss 1.5656 val_ap 0.7628 val_mrr 0.5158
+[seed 1] epoch 7 loss 1.5439 val_ap 0.7638 val_mrr 0.5118
+[seed 1] epoch 8 loss 1.5161 val_ap 0.7746 val_mrr 0.5092
+[seed 1] epoch 9 loss 1.4965 val_ap 0.7734 val_mrr 0.4952
+[seed 1] epoch 10 loss 1.4648 val_ap 0.7804 val_mrr 0.5019
+[seed 1] epoch 11 loss 1.4435 val_ap 0.7816 val_mrr 0.4927
+seed 1: best val AP 0.5158 (12 epochs)

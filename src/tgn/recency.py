@@ -21,12 +21,15 @@ FEAT_DIM_BUCKETS = 7  # + pair-dt indicators (==1, ==2, <=7) for sharp recency
 # measured these as the information the inductive protocol needs and the
 # 20-edge attention + GRU memory cannot count.
 FEAT_DIM_GLOBAL = 11
+# global + the sharp pair-dt indicators (==1, ==2, <=7) at cols 11-13
+FEAT_DIM_GLOBAL_BUCKETS = 14
 WINDOW = 30  # days, for the rolling dst-frequency feature
 
 
 class PairRecency:
     def __init__(self, n_nodes: int, feat_dim: int = FEAT_DIM):
-        assert feat_dim in (FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL)
+        assert feat_dim in (FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
+                            FEAT_DIM_GLOBAL_BUCKETS)
         self.n_nodes = n_nodes
         self.feat_dim = feat_dim
         self.pair_last = defaultdict(dict)  # s -> {d: last day}
@@ -52,6 +55,10 @@ class PairRecency:
             f[i + (4,)] = 1.0 if dt <= 1 else 0.0
             f[i + (5,)] = 1.0 if dt == 2 else 0.0
             f[i + (6,)] = 1.0 if dt <= 7 else 0.0
+        elif self.feat_dim == FEAT_DIM_GLOBAL_BUCKETS:
+            f[i + (11,)] = 1.0 if dt <= 1 else 0.0
+            f[i + (12,)] = 1.0 if dt == 2 else 0.0
+            f[i + (13,)] = 1.0 if dt <= 7 else 0.0
 
     def observe_day(self, src, dst, day: int):
         src = np.asarray(src)
@@ -109,8 +116,8 @@ class PairRecency:
             if last is not None:
                 self._pair_cols(f, (i,), day, last)
         f[:, 2], f[:, 3] = self._dst_cols(d_arr, day)
-        if self.feat_dim == FEAT_DIM_GLOBAL:
-            f[:, 4:] = self._global_cols(s_arr, d_arr, day)
+        if self.feat_dim >= FEAT_DIM_GLOBAL:
+            f[:, 4:11] = self._global_cols(s_arr, d_arr, day)
         return f
 
     def features_cross(self, s_arr, d_arr, day: int) -> np.ndarray:
@@ -130,7 +137,7 @@ class PairRecency:
         seen, dt = self._dst_cols(d_arr, day)
         f[:, :, 2] = seen[None, :]
         f[:, :, 3] = dt[None, :]
-        if self.feat_dim == FEAT_DIM_GLOBAL:
+        if self.feat_dim >= FEAT_DIM_GLOBAL:
             # src-side cols broadcast over j, dst-side cols over i
             g_s = self._global_cols(s_arr, s_arr, day)  # cols 0-2, 5 valid
             g_d = self._global_cols(d_arr, d_arr, day)  # cols 3, 4, 6 valid
@@ -154,10 +161,14 @@ class PairRecency:
                 f[cs, 4] = (dt <= 1).astype(np.float32)
                 f[cs, 5] = (dt == 2).astype(np.float32)
                 f[cs, 6] = (dt <= 7).astype(np.float32)
+            elif self.feat_dim == FEAT_DIM_GLOBAL_BUCKETS:
+                f[cs, 11] = (dt <= 1).astype(np.float32)
+                f[cs, 12] = (dt == 2).astype(np.float32)
+                f[cs, 13] = (dt <= 7).astype(np.float32)
         all_nodes = np.arange(self.n_nodes)
         f[:, 2], f[:, 3] = self._dst_cols(all_nodes, day)
-        if self.feat_dim == FEAT_DIM_GLOBAL:
+        if self.feat_dim >= FEAT_DIM_GLOBAL:
             g = self._global_cols(np.full(self.n_nodes, int(s)), all_nodes,
                                   day)
-            f[:, 4:] = g
+            f[:, 4:11] = g
         return f
