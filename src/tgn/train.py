@@ -9,6 +9,7 @@ Batches never cross day boundaries: every prediction for day T uses memory
 reflecting days < T only, and same-day events never see each other.
 """
 import argparse
+import bisect
 import copy
 import json
 from pathlib import Path
@@ -22,7 +23,7 @@ from tgat.neighbors import NeighborStore
 from tgat.train import _pos_pairs_by_day, auroc, average_precision
 
 from .model import TGN
-from .recency import FEAT_DIM, FEAT_DIM_BUCKETS, PairRecency
+from .recency import FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL, PairRecency
 from .streaming import day_ranges, score_pairs_streaming
 
 
@@ -42,7 +43,8 @@ class StreamingNegatives:
     """
 
     def __init__(self, n_nodes, pos_pairs_by_day, rng, hard_frac=0.0,
-                 src_frac=0.5, pop_frac=0.0, pop_window=0):
+                 src_frac=0.5, pop_frac=0.0, pop_window=0, nov_frac=0.0,
+                 nov_window=30):
         self.n = n_nodes
         self.pos_by_day = pos_pairs_by_day
         self.rng = rng
@@ -50,16 +52,20 @@ class StreamingNegatives:
         self.src_frac = src_frac
         self.pop_frac = pop_frac
         self.pop_window = pop_window  # 0 = all history; else last N dst tokens
+        self.nov_frac = nov_frac      # novelty negatives: recently-FIRST-seen
+        self.nov_window = nov_window  # pairs (mimics the inductive NS pool)
         self.pair_set = set()
         self.pair_list = []      # distinct (s, d), first-seen order
+        self.first_seen = []     # first-seen day, parallel to pair_list
         self.partners = {}       # s -> list of distinct past partners
         self.dst_tokens = []     # every past dst with repetition (freq-weighted)
 
-    def observe_day(self, src, dst):
+    def observe_day(self, src, dst, day=0):
         for s, d in zip(np.asarray(src).tolist(), np.asarray(dst).tolist()):
             if (s, d) not in self.pair_set:
                 self.pair_set.add((s, d))
                 self.pair_list.append((s, d))
+                self.first_seen.append(int(day))
                 self.partners.setdefault(s, []).append(d)
             self.dst_tokens.append(d)
 
@@ -79,7 +85,22 @@ class StreamingNegatives:
             for k in range(n_neg):
                 pair = None
                 u = self.rng.random()
-                if self.hard_frac <= u < self.hard_frac + self.pop_frac \
+                hp = self.hard_frac + self.pop_frac
+                if hp <= u < hp + self.nov_frac and self.first_seen:
+                    # novelty negative: a pair whose FIRST appearance is
+                    # within nov_window days — the streaming composition of
+                    # the inductive NS pool (pair_list is first-seen ordered,
+                    # so the eligible pairs are a contiguous tail)
+                    lo_i = bisect.bisect_left(self.first_seen,
+                                              day - self.nov_window)
+                    if lo_i < len(self.pair_list):
+                        for _ in range(10):
+                            p = self.pair_list[int(self.rng.integers(
+                                lo_i, len(self.pair_list)))]
+                            if p not in pos:
+                                pair = p
+                                break
+                elif self.hard_frac <= u < self.hard_frac + self.pop_frac \
                         and self.dst_tokens:
                     # popularity negative: dst ~ past-destination frequency —
                     # pushes down globally active hubs the source never paid
@@ -115,11 +136,13 @@ class StreamingNegatives:
 
 
 def sample_negatives_streaming(g: DailyGraph, rng, hard_frac, src_frac,
-                               lo, hi, n_neg=1, pop_frac=0.0):
+                               lo, hi, n_neg=1, pop_frac=0.0, nov_frac=0.0,
+                               nov_window=30):
     """Fixed negatives for events in [lo, hi), pools strictly pre-day."""
     pos_by_day = _pos_pairs_by_day(g)
     sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
-                                 hard_frac, src_frac, pop_frac)
+                                 hard_frac, src_frac, pop_frac,
+                                 nov_frac=nov_frac, nov_window=nov_window)
     off = day_ranges(g.day, g.n_days)
     ns = np.empty((hi - lo, n_neg), np.int64)
     nd = np.empty((hi - lo, n_neg), np.int64)
@@ -131,7 +154,7 @@ def sample_negatives_streaming(g: DailyGraph, rng, hard_frac, src_frac,
             ns[qlo - lo:qhi - lo] = a
             nd[qlo - lo:qhi - lo] = b
         if ehi > elo:
-            sampler.observe_day(g.src[elo:ehi], g.dst[elo:ehi])
+            sampler.observe_day(g.src[elo:ehi], g.dst[elo:ehi], T)
         if ehi >= hi:
             break
     return ns, nd
@@ -150,7 +173,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               n_neg_hard=0, beta_hard=1.0, pair_feat=False,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
               val_mrr_cands=100, in_batch=False, pop_frac=0.0,
-              pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp"):
+              pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp",
+              nov_frac=0.0, nov_window=30, n_layers=1):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -176,7 +200,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     rng = np.random.default_rng(seed)
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                dim=dim, head=head,
+                dim=dim, head=head, n_layers=n_layers,
                 pair_feat_dim=pair_feat_dim if pair_feat else 0).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     pos_by_day = _pos_pairs_by_day(g)
@@ -192,14 +216,14 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     val_hard_frac = 0.5 if n_neg_hard > 0 else hard_frac
     val_ns, val_nd = sample_negatives_streaming(
         g, rng_eval, val_hard_frac, src_frac, g.train_end, g.val_end, n_neg=1,
-        pop_frac=pop_frac)
+        pop_frac=pop_frac, nov_frac=nov_frac, nov_window=nov_window)
 
     n_tm = min(train_metric_sample, g.train_end)
     tm_idx = np.sort(rng_eval.choice(g.train_end, size=n_tm, replace=False))
     tm_s, tm_d, tm_t = g.src[tm_idx], g.dst[tm_idx], g.day[tm_idx]
     all_ns, all_nd = sample_negatives_streaming(
         g, rng_eval, val_hard_frac, src_frac, 0, g.train_end, n_neg=1,
-        pop_frac=pop_frac)
+        pop_frac=pop_frac, nov_frac=nov_frac, nov_window=nov_window)
     tm_ns, tm_nd = all_ns[tm_idx, 0], all_nd[tm_idx, 0]
 
     # fixed sampled-MRR probe: rank each chosen val positive among C uniform
@@ -250,7 +274,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         pending = None  # (lo, hi, day) of the most recently completed day
         # negative pools rebuilt each epoch so day-T sampling is strictly-past
         sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
-                                     hard_frac, src_frac, pop_frac, pop_window)
+                                     hard_frac, src_frac, pop_frac, pop_window,
+                                     nov_frac=nov_frac, nov_window=nov_window)
         hard_sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
                                           1.0, src_frac)
         # recency features advance with the samplers: day T sees days <= T-1,
@@ -347,7 +372,11 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                         mem, last, g.src[plo:phi], g.dst[plo:phi], pday,
                         g.edge_feat[plo:phi])
             pending = (dlo, dhi, int(T))
-            sampler.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi])
+            sampler.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi], int(T))
+            # advancing hard_sampler was missing before 2026-08-14: two-term
+            # runs (L5, pf_2t, hinge) drew from empty pools and silently fell
+            # back to uniform — those results never tested their hypothesis
+            hard_sampler.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi], int(T))
             if rec is not None:
                 rec.observe_day(g.src[dlo:dhi], g.dst[dlo:dhi], int(T))
 
@@ -415,8 +444,11 @@ def main():
     ap_.add_argument("--in-batch", action="store_true")
     ap_.add_argument("--pop-frac", type=float, default=0.0)
     ap_.add_argument("--pop-window", type=int, default=0)
+    ap_.add_argument("--nov-frac", type=float, default=0.0)
+    ap_.add_argument("--nov-window", type=int, default=30)
+    ap_.add_argument("--n-layers", type=int, default=1, choices=[1, 2])
     ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
-                     choices=[FEAT_DIM, FEAT_DIM_BUCKETS])
+                     choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL])
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -439,7 +471,9 @@ def main():
                                 pop_frac=args.pop_frac,
                                 pop_window=args.pop_window,
                                 pair_feat_dim=args.pair_feat_dim,
-                                head=args.head)
+                                head=args.head, nov_frac=args.nov_frac,
+                                nov_window=args.nov_window,
+                                n_layers=args.n_layers)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
