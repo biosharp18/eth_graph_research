@@ -42,15 +42,17 @@ class StreamingNegatives:
     """
 
     def __init__(self, n_nodes, pos_pairs_by_day, rng, hard_frac=0.0,
-                 src_frac=0.5):
+                 src_frac=0.5, pop_frac=0.0):
         self.n = n_nodes
         self.pos_by_day = pos_pairs_by_day
         self.rng = rng
         self.hard_frac = hard_frac
         self.src_frac = src_frac
+        self.pop_frac = pop_frac
         self.pair_set = set()
         self.pair_list = []      # distinct (s, d), first-seen order
         self.partners = {}       # s -> list of distinct past partners
+        self.dst_tokens = []     # every past dst with repetition (freq-weighted)
 
     def observe_day(self, src, dst):
         for s, d in zip(np.asarray(src).tolist(), np.asarray(dst).tolist()):
@@ -58,6 +60,7 @@ class StreamingNegatives:
                 self.pair_set.add((s, d))
                 self.pair_list.append((s, d))
                 self.partners.setdefault(s, []).append(d)
+            self.dst_tokens.append(d)
 
     def _uniform(self, s, pos):
         while True:
@@ -74,7 +77,18 @@ class StreamingNegatives:
             s = int(s_arr[i])
             for k in range(n_neg):
                 pair = None
-                if self.rng.random() < self.hard_frac:
+                u = self.rng.random()
+                if self.hard_frac <= u < self.hard_frac + self.pop_frac \
+                        and self.dst_tokens:
+                    # popularity negative: dst ~ past-destination frequency —
+                    # pushes down globally active hubs the source never paid
+                    for _ in range(10):
+                        c = self.dst_tokens[
+                            int(self.rng.integers(0, len(self.dst_tokens)))]
+                        if c != s and (s, c) not in pos:
+                            pair = (s, c)
+                            break
+                elif u < self.hard_frac:
                     if self.rng.random() < self.src_frac:
                         cands = self.partners.get(s)
                         if cands:
@@ -97,11 +111,11 @@ class StreamingNegatives:
 
 
 def sample_negatives_streaming(g: DailyGraph, rng, hard_frac, src_frac,
-                               lo, hi, n_neg=1):
+                               lo, hi, n_neg=1, pop_frac=0.0):
     """Fixed negatives for events in [lo, hi), pools strictly pre-day."""
     pos_by_day = _pos_pairs_by_day(g)
     sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
-                                 hard_frac, src_frac)
+                                 hard_frac, src_frac, pop_frac)
     off = day_ranges(g.day, g.n_days)
     ns = np.empty((hi - lo, n_neg), np.int64)
     nd = np.empty((hi - lo, n_neg), np.int64)
@@ -131,7 +145,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               loss="bce", n_neg=1, hard_frac=0.0, src_frac=0.5,
               n_neg_hard=0, beta_hard=1.0, pair_feat=False,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
-              val_mrr_cands=100, in_batch=False):
+              val_mrr_cands=100, in_batch=False, pop_frac=0.0):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -171,13 +185,15 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     # two-term mode balances val negatives 50/50 random/hard
     val_hard_frac = 0.5 if n_neg_hard > 0 else hard_frac
     val_ns, val_nd = sample_negatives_streaming(
-        g, rng_eval, val_hard_frac, src_frac, g.train_end, g.val_end, n_neg=1)
+        g, rng_eval, val_hard_frac, src_frac, g.train_end, g.val_end, n_neg=1,
+        pop_frac=pop_frac)
 
     n_tm = min(train_metric_sample, g.train_end)
     tm_idx = np.sort(rng_eval.choice(g.train_end, size=n_tm, replace=False))
     tm_s, tm_d, tm_t = g.src[tm_idx], g.dst[tm_idx], g.day[tm_idx]
     all_ns, all_nd = sample_negatives_streaming(
-        g, rng_eval, val_hard_frac, src_frac, 0, g.train_end, n_neg=1)
+        g, rng_eval, val_hard_frac, src_frac, 0, g.train_end, n_neg=1,
+        pop_frac=pop_frac)
     tm_ns, tm_nd = all_ns[tm_idx, 0], all_nd[tm_idx, 0]
 
     # fixed sampled-MRR probe: rank each chosen val positive among C uniform
@@ -228,7 +244,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
         pending = None  # (lo, hi, day) of the most recently completed day
         # negative pools rebuilt each epoch so day-T sampling is strictly-past
         sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
-                                     hard_frac, src_frac)
+                                     hard_frac, src_frac, pop_frac)
         hard_sampler = StreamingNegatives(g.n_nodes, pos_by_day, rng,
                                           1.0, src_frac)
         # recency features advance with the samplers: day T sees days <= T-1,
@@ -383,6 +399,7 @@ def main():
     ap_.add_argument("--hard-hinge", type=float, default=0.0)
     ap_.add_argument("--select", choices=["ap", "mrr"], default="ap")
     ap_.add_argument("--in-batch", action="store_true")
+    ap_.add_argument("--pop-frac", type=float, default=0.0)
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -401,7 +418,8 @@ def main():
                                 beta_hard=args.beta_hard,
                                 pair_feat=args.pair_feat,
                                 hard_hinge=args.hard_hinge,
-                                select=args.select, in_batch=args.in_batch)
+                                select=args.select, in_batch=args.in_batch,
+                                pop_frac=args.pop_frac)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "

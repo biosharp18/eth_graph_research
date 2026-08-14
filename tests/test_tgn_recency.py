@@ -144,3 +144,19 @@ def test_in_batch_negatives_smoke():
                             pair_feat=True, in_batch=True)
     assert np.isfinite(info["history"][-1]["train_loss"])
     assert np.isfinite(info["history"][-1]["val_ap"])
+
+
+def test_popularity_negatives_weighted_by_frequency():
+    from tgn.train import StreamingNegatives
+
+    rng = np.random.default_rng(0)
+    sam = StreamingNegatives(n_nodes=50, pos_pairs_by_day={}, rng=rng,
+                             hard_frac=0.0, pop_frac=1.0)
+    # node 7 is the hub: appears 20x as dst; node 9 once
+    sam.observe_day(np.zeros(20, np.int64), np.full(20, 7, np.int64))
+    sam.observe_day(np.array([1]), np.array([9]))
+    ns, nd = sam.sample(np.full(200, 2, np.int64), np.zeros(200, np.int64),
+                        day=5, n_neg=1)
+    counts = np.bincount(nd.ravel(), minlength=50)
+    assert counts[7] > 100  # ~20/21 of draws
+    assert (ns == 2).all()
