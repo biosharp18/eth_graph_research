@@ -44,11 +44,14 @@ def main():
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap_.add_argument("--dim", type=int, default=100)
     ap_.add_argument("--k", type=int, default=20)
+    ap_.add_argument("--nbr-mode", choices=["recent", "strat"],
+                     default="recent")
     args = ap_.parse_args()
     device = torch.device(args.device)
 
     g = load_daily_graph(args.parquet)
-    store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=args.k)
+    store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes,
+                          k=args.k, mode=args.nbr_mode)
     _, before, _ = _pair_sets(g)
     test = slice(g.val_end, len(g.src))
     seen = np.array([(int(s), int(d)) in before

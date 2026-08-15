@@ -100,6 +100,36 @@ sharpens interpretation either way.
 evaluation + deployment ranking, figures, write-up. Negative results get
 reported with the same prominence as wins.
 
+## Campaign 2 (2026-08-14 PM, user directive): widen the receptive field
+
+Hypothesis: widening the model's receptive field **in time** and **in graph
+space** yields further gains beyond the roof break. The current receptive
+field, stated precisely:
+- attention: 20 most recent 1-hop edges (a ~few-day sliver for active nodes);
+- memory: infinite-horizon in principle, saturating GRU in practice;
+- features: pair *last* day only (no pair depth), 30-day dst window only,
+  no relationship age, no recency-rank among partners, no day-level context.
+
+Widenings under test, ordered by expected value from Campaign-1 evidence
+(time >> hop-space in this graph):
+- **T1 time-deep features**: pair frequency + relationship age (pair history
+  depth is currently ONE day!), multi-scale windows (7/90), directed distinct
+  partner counts, recency-rank of the candidate among the source's partners
+  (the recency heuristic's own statistic, currently invisible to the head).
+- **T2 time-stratified neighbor sampling**: same k, but half the slots
+  reserved for evenly-spaced OLDER edges instead of all-most-recent — widens
+  the attention window to full history at fixed compute.
+- **G1 wider one-hop (k=64)** on the new recipe (prior k-nulls predate the
+  feature/negative machinery).
+- **G2 two-hop on the new recipe** (Campaign-1 null was on the pfpop recipe;
+  one configured retest for the record).
+- **G3 day-context features** (yesterday/EMA global activity) — whole-graph
+  receptive field; can only act through nonlinear interactions since NS pools
+  are day-matched. Oracle decides if it's worth model runs.
+Decision rule as before: day-split oracle ablations first; only feature
+families that add generalizing AU-ROC (or clearly target the hits@1
+partner-ordering gap) graduate to GPU runs.
+
 ## Ground rules (unchanged from all prior campaigns)
 
 - Evaluation protocol frozen; EdgeBank recompute as integrity check.

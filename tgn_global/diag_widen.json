@@ -1,0 +1,24 @@
+{
+  "auroc": {
+    "pair_seen": 0.5128,
+    "pair_recency": 0.5294,
+    "dst_recency": 0.5685,
+    "src_recency": 0.5721,
+    "src_freq": 0.5915,
+    "dst_freq": 0.5884,
+    "dst_freq30": 0.5611,
+    "deg_s": 0.5598,
+    "deg_c": 0.5414,
+    "pair_freq": 0.6057,
+    "pair_age": 0.5984,
+    "dst_freq7": 0.5677,
+    "dst_freq90": 0.5835,
+    "src_freq30": 0.5614,
+    "out_deg_s": 0.5409,
+    "in_deg_c": 0.5392,
+    "rec_rank": 0.5005,
+    "n_partners_s": 0.5409,
+    "day_edges_prev": 0.5,
+    "day_edges_ema7": 0.5
+  }
+}

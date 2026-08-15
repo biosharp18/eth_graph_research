@@ -9,7 +9,14 @@ import numpy as np
 
 
 class NeighborStore:
-    def __init__(self, src, dst, day, edge_feat, n_nodes: int, k: int = 20):
+    def __init__(self, src, dst, day, edge_feat, n_nodes: int, k: int = 20,
+                 mode: str = "recent"):
+        # mode "recent": the k most recent strictly-past incidences (default).
+        # mode "strat": when history exceeds k, keep the ceil(k/2) most recent
+        # and fill the rest with evenly-spaced OLDER incidences — same compute,
+        # receptive field widened from ~k events to the full history.
+        assert mode in ("recent", "strat")
+        self.mode = mode
         self.k = k
         self.n_nodes = n_nodes
         F = edge_feat.shape[1]
@@ -68,10 +75,26 @@ class NeighborStore:
 
         cut = np.searchsorted(self.keys, nodes * self.D + qdays, side="left")
         cut = np.minimum(cut, self.node_end[nodes])
-        lo = np.maximum(cut - k, self.node_start[nodes])
+        start = self.node_start[nodes]
+        lo = np.maximum(cut - k, start)
 
         idx = lo[:, None] + np.arange(k)[None, :]
         valid = idx < cut[:, None]
+        if self.mode == "strat":
+            n_hist = cut - start
+            recent = k - k // 2
+            older = k // 2
+            wide = n_hist > k  # rows whose history overflows the window
+            if older > 0 and wide.any():
+                # first `older` columns -> evenly spaced over [start, cut-recent)
+                pool = (n_hist - recent).astype(np.float64)  # > older here
+                j = np.arange(older, dtype=np.float64)
+                strided = (start[:, None]
+                           + np.floor(j[None, :] * pool[:, None] / older)
+                           .astype(np.int64))
+                idx = idx.copy()
+                idx[wide, :older] = strided[wide]
+                # all strided rows are fully valid (history > k)
         idx_clipped = np.minimum(idx, len(self.keys) - 1)
 
         gathered_other = self.inc_other[idx_clipped]

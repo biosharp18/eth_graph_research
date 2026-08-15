@@ -24,7 +24,7 @@ from tgat.train import _pos_pairs_by_day, auroc, average_precision
 
 from .model import TGN
 from .recency import (FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
-                      FEAT_DIM_GLOBAL_BUCKETS, PairRecency)
+                      FEAT_DIM_GLOBAL_BUCKETS, FEAT_DIM_WIDE, PairRecency)
 from .streaming import day_ranges, score_pairs_streaming
 
 
@@ -175,7 +175,7 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
               val_mrr_cands=100, in_batch=False, pop_frac=0.0,
               pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp",
-              nov_frac=0.0, nov_window=30, n_layers=1):
+              nov_frac=0.0, nov_window=30, n_layers=1, nbr_mode="recent"):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -199,7 +199,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     full ranking. Same-destination and same-day-positive pairs are masked."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
-    store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k)
+    store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k,
+                          mode=nbr_mode)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
                 dim=dim, head=head, n_layers=n_layers,
                 pair_feat_dim=pair_feat_dim if pair_feat else 0).to(device)
@@ -448,9 +449,11 @@ def main():
     ap_.add_argument("--nov-frac", type=float, default=0.0)
     ap_.add_argument("--nov-window", type=int, default=30)
     ap_.add_argument("--n-layers", type=int, default=1, choices=[1, 2])
+    ap_.add_argument("--nbr-mode", choices=["recent", "strat"],
+                     default="recent")
     ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
                      choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
-                              FEAT_DIM_GLOBAL_BUCKETS])
+                              FEAT_DIM_GLOBAL_BUCKETS, FEAT_DIM_WIDE])
     ap_.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap_.parse_args()
 
@@ -475,7 +478,8 @@ def main():
                                 pair_feat_dim=args.pair_feat_dim,
                                 head=args.head, nov_frac=args.nov_frac,
                                 nov_window=args.nov_window,
-                                n_layers=args.n_layers)
+                                n_layers=args.n_layers,
+                                nbr_mode=args.nbr_mode)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "

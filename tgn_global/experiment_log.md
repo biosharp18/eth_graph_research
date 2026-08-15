@@ -231,3 +231,29 @@ roof break needs the novelty-trained scorer itself.
 Figure: `figures/tgn_global_frontier.png`
 (`scripts/plot_frontier.py`; repo palette/conventions). Full campaign
 write-up: `results.md`. Suite: 85 passing.
+
+# Campaign 2 (2026-08-14 PM): widen the receptive field (user directive)
+
+## Phase 0 — widened signal audit (`scripts/diag_widen.py`)
+
+Single-signal AU-ROC on the frozen inductive pools (5 pools):
+**pair_freq 0.6057 and pair_age 0.5984 — the two strongest single signals
+ever measured on these pools**, and both are pair-history DEPTH, which the
+model cannot see (its features carry only the pair's LAST day).
+dst_freq90 0.5835; rec_rank and day-context ≈ 0.50 alone (as expected —
+rank matters for full ranking, day-context is day-matched away).
+
+Day-split MLP ablations (train early test days, eval late):
+
+| feature set | day-split AU-ROC |
+|---|---|
+| campaign-1 block (9) | 0.6677 ± 0.006 |
+| + pair depth (freq, age) | 0.6853 ± 0.011 |
+| + multi-scale windows (7/90/src30) | 0.6853 ± 0.022 |
+| + T1 all (18) | **0.6890 ± 0.007** |
+| + day-context | 0.6045 (HURTS — memorizes day regimes; G3 dropped) |
+
+Decisions: T1 time-deep features graduate (new FEAT_DIM_WIDE=23 = base4 +
+global7 + 9 time-deep + 3 dt-buckets); day-context rejected at diagnosis;
+T2 (stratified neighbor sampling) and G1/G2 (k=64, two-hop retest) run as
+architecture probes regardless, since they widen what attention sees.
