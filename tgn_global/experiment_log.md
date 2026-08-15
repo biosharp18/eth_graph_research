@@ -257,3 +257,67 @@ Decisions: T1 time-deep features graduate (new FEAT_DIM_WIDE=23 = base4 +
 global7 + 9 time-deep + 3 dt-buckets); day-context rejected at diagnosis;
 T2 (stratified neighbor sampling) and G1/G2 (k=64, two-hop retest) run as
 architecture probes regardless, since they widen what attention sees.
+
+## 2026-08-14 — campaign-2 scoping (2 seeds each): features win, attention nulls
+
+Machinery: `FEAT_DIM_WIDE=23` in recency.py; `NeighborStore(mode="strat")`
+(half recent, half evenly-spaced over full history); `--nbr-mode` plumbed
+through train/evaluate/ranking (MUST be passed at eval for strat models).
+Suite 90 passing.
+
+| config | rand | hist | ind (seen/uns) | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| **W1** wide f23, h.1 p.5, mrr | 0.9774 | 0.8480 | 0.6169 (.755/.522) | **0.3623** | **0.3013** | 0.4679 | 0.5849 |
+| **W2** wide f23 + nov.2, combo | 0.9475 | 0.8318 | **0.6618 (.752/.600)** | 0.3297 | 0.2731 | 0.4286 | 0.5615 |
+| S1 strat sampling (f14 recipe) | 0.9744 | 0.8373 | 0.5744 | 0.3109 | 0.2471 | 0.4305 | 0.5835 |
+| G1 k=64 (f14 recipe) | 0.9738 | 0.8227 | 0.5769 | 0.3203 | 0.2543 | 0.4485 | 0.5891 |
+| ref f14 (5s) | 0.9767 | 0.8200 | 0.5766 | 0.3313 | 0.2645 | 0.4558 | 0.5933 |
+| recency | — | — | — | 0.3540 | 0.2777 | 0.4734 | 0.5266 |
+
+Readings (2-seed, confirmation pending):
+1. **W1 beats the recency heuristic outright on MRR (+0.008) and hits@1
+   (+0.024)** — first learned model to do so — while ALSO sitting at the
+   inductive roof (0.617) and hist 0.848. Mechanism: `rec_rank` hands the
+   head the heuristic's own ordering statistic to refine, `pair_freq`/`age`
+   add the depth recency ignores.
+2. **W2: inductive 0.6618**, closing most of the gap to the 0.689 oracle,
+   at MRR 0.3297 (the nov-vs-MRR trade nearly vanished with wide features).
+3. **Attention-window widening is null on both axes** (S1 strat, G1 k=64):
+   the missing time-depth is countable statistics, not attendable events.
+Launched: W1/W2 extended to 5 seeds; G2 (two-hop on W1 recipe, 2s);
+W3 (nov .1 midpoint, 2s).
+
+## 2026-08-14 — campaign-2 confirmations (5 seeds) + the two-hop reversal
+
+| config | rand | hist | inductive | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| **W1** wide-mrr (5s) | 0.9782±.001 | 0.8402±.009 | 0.6200±.007 | **0.3658±.004** | **0.3045±.005** | 0.4731±.005 | 0.5914±.006 |
+| **W2** wide-ind (5s) | 0.9465±.005 | 0.8271±.005 | **0.6601±.013** | 0.3381±.017 | 0.2817±.017 | 0.4368±.018 | 0.5676±.010 |
+| G2 two-hop+wide (2s) | 0.9790 | 0.8454 | 0.6210 | 0.3731 | 0.3106 | **0.4821** | 0.6045 |
+| W3 nov.1 midpoint (2s) | 0.9612 | 0.8275 | 0.6516 | 0.3529 | 0.2931 | 0.4569 | 0.5864 |
+| recency | — | — | — | 0.3540 | 0.2777 | 0.4734 | 0.5266 |
+
+- **Recency heuristic beaten at 5 seeds** (W1): MRR +0.012, h@1 +0.027,
+  h@10 tie, h@100 +0.065, seen-MRR 0.6686 > recency's 0.6404. Same model
+  clears the inductive roof (0.6200) with hist 0.840.
+- **Inductive 0.6601 ± 0.013 (W2)** — +0.044 over campaign-1's headline,
+  ~96% of the measured 0.689 feature-family oracle.
+- **Two-hop REVERSES to a win on wide features** (G2 2s: +0.007 MRR,
+  +0.009 h@10 over W1, σ≈0.0003): graph-space widening contributes once
+  time-depth features exist — it was null on narrow features (campaign 1)
+  and on strat/k64 attention windows. Extended to 5 seeds; G3 probe
+  (two-hop + nov.1) launched for the single-model all-rounder.
+
+## 2026-08-14 — campaign-2 final (5 seeds) — both barriers down
+
+| config | rand | hist | inductive | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| **G2 wide+two-hop (5s)** | 0.9789 | 0.8423 | 0.6215±.003 | **0.3707±.003** | **0.3086±.003** | **0.4788±.005** | **0.6015±.005** |
+| W3 nov.1 (5s) | 0.9641 | 0.8263 | 0.6534±.008 | 0.3525 | 0.2930 | 0.4555 | 0.5873 |
+| G3 two-hop+nov.1 (2s) | 0.9696 | 0.8404 | 0.6584 | 0.3530 | 0.2935 | 0.4537 | 0.5858 |
+
+G2 beats recency on ALL FOUR ranking metrics at 5 seeds (MRR +0.017,
+h@1 +0.031, h@10 +0.005, h@100 +0.075) and holds ind 0.6215 / hist 0.8423.
+W2 (0.6601) stays the inductive champion. Figure
+`figures/tgn_global_frontier2.png`; write-up updated in `results.md`.
+Campaign closed.

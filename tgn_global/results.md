@@ -1,5 +1,10 @@
 # tgn_global — results (2026-08-14)
 
+> **Campaign 2 (same day, later) superseded parts of this file — see
+> "Campaign 2" section at the bottom. Headline updates: recency heuristic
+> beaten on all four ranking metrics (G2: MRR 0.3707, h@1 0.3086,
+> h@10 0.4788, h@100 0.6015), inductive raised to 0.6601 (W2).**
+
 **TL;DR.** The ~0.60 inductive AU-ROC roof is broken: **0.6163 ± 0.0056**
 (5 seeds, frozen protocol) by giving the TGN *global-in-time* awareness —
 explicit node-activity features plus training negatives shaped like the
@@ -114,16 +119,99 @@ $UVP uv run --group ml python -m tgn.ensemble --parquet $P \
   --out tgn_global/figures/g_ensemble_mrr_ind.json
 ```
 
-## Open next steps
+## Open next steps (superseded by Campaign 2 for items 1 and 3 — see below)
 
 1. **hits@1**: the remaining 0.013 to recency lives in partner-ordering
-   precision. The one untried, principled lever: make the sharp dt==1
-   contrast trainable by *excluding* most-recent partners from the hard/pop
-   negative slices (they are exactly the candidates that are usually
-   right), or a small monotonic prior on the pair-dt feature.
+   precision. → SOLVED in Campaign 2 by the rec_rank / pair-depth features.
 2. **Two-calibration heads** (07's proposal) with the FIXED two-term
    sampler: one trunk, one head per reference distribution — now actually
    testable, since the old two-term evidence is void (see bug note).
-3. The 0.62 → 0.69 inductive gap: only closable per-benchmark (a scorer
-   calibrated for the inductive reference distribution alone); decide
-   whether that reporting mode is wanted before building it.
+3. The 0.62 → 0.69 inductive gap → mostly closed in Campaign 2 (0.6601).
+
+---
+
+# Campaign 2 (2026-08-14 PM): widening the receptive field
+
+**Directive:** widen the receptive field in time and in graph space.
+**Outcome: both open barriers fell.** The recency heuristic is beaten
+outright on every ranking metric by a single 5-seed model, and inductive
+AU-ROC reached 0.6601 — 96% of the measured feature-family oracle.
+
+## Headline (5 seeds unless noted; recency: MRR .3540, h@1 .2777, h@10 .4734, h@100 .5266)
+
+| model | rand | hist | inductive | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|
+| **G2 wide + two-hop** (deploy champion) | 0.9789 | 0.8423 | 0.6215 ± .003 | **0.3707 ± .003** | **0.3086 ± .003** | **0.4788 ± .005** | **0.6015 ± .005** |
+| W1 wide feats, 1-hop | 0.9782 | 0.8402 | 0.6200 ± .007 | 0.3658 ± .004 | 0.3045 | 0.4731 | 0.5914 |
+| **W2 wide + nov .2** (inductive champion) | 0.9465 | 0.8271 | **0.6601 ± .013** | 0.3381 | 0.2817 | 0.4368 | 0.5676 |
+| W3 wide + nov .1 (balanced) | 0.9641 | 0.8263 | 0.6534 ± .008 | 0.3525 | 0.2930 | 0.4555 | 0.5873 |
+| G3 two-hop + nov .1 (2 seeds) | 0.9696 | 0.8404 | 0.6584 | 0.3530 | 0.2935 | 0.4537 | 0.5858 |
+
+G2 recipe: `--loss ce --n-neg 5 --hard-frac 0.1 --pop-frac 0.5 --pair-feat
+--pair-feat-dim 23 --select mrr --n-layers 2`. W2: `--pop-frac 0.4
+--nov-frac 0.2 --select combo` (1-hop). Figure:
+`figures/tgn_global_frontier2.png`.
+
+## What did it (and what didn't)
+
+1. **Time-deep features (the whole story).** Phase-0 audit: pair_freq
+   (0.606) and pair_age (0.598) are the strongest single inductive signals
+   ever measured here — and the model previously saw only the pair's LAST
+   day. `FEAT_DIM_WIDE = 23` adds pair frequency/age, 7/90-day windows,
+   directed distinct-partner degrees, and **rec_rank** — the candidate's
+   recency rank among the source's partners, i.e. the recency heuristic's
+   own ordering statistic, handed to the head to refine. Day-split oracle:
+   0.668 → 0.689. Model effect: MRR +0.035, h@1 +0.040 over the f14 arm,
+   and the novelty-vs-MRR trade-off nearly vanished (W2 keeps MRR 0.338
+   where the narrow-feature arm fell to 0.238).
+2. **Two-hop attention reverses to a win — but only on wide features.**
+   Null on narrow features (campaign 1), +0.005–0.009 on every ranking
+   metric on wide ones (G2 vs W1, consistent across seeds). Reading:
+   with node-level statistics saturated by features, the second hop's
+   marginal information (who my counterparties deal with) finally binds.
+   Graph-space widening contributes only after time-depth is granted.
+3. **Widening the attention window is a dead end** (measured twice):
+   stratified half-recent/half-history sampling (S1) and k=64 (G1) are
+   both null-to-negative. The missing time-depth is countable statistics,
+   not attendable events — attention cannot count.
+4. **Day-level graph context is a trap**: it single-handedly DROPS the
+   day-split oracle 0.689 → 0.605 (memorizes day regimes). Rejected at
+   diagnosis, never trained.
+
+## Honest caveats
+
+- G2's h@10 edge over recency is 0.0054 with σ .005 — call it "at parity
+  or slightly above"; MRR/h@1/h@100 are clear wins (≥ 3σ).
+- The seen/unseen inductive strata still trade (W1: .763/.521 vs
+  W2: .758/.592); novelty negatives remain the only lever for the unseen
+  stratum and still cost ~0.03 random AU-ROC.
+- Old hard-CE's historical 0.899 remains unmatched by any high-MRR model
+  (best here 0.842–0.845); that trade-off is unchanged from 07's geometry.
+- G3 (two-hop + novelty) was only run at 2 seeds; its numbers suggest
+  two-hop's ranking gain and novelty's inductive gain do NOT stack
+  linearly (MRR 0.3530 ≈ W3's, not W3 + 0.005).
+
+## Campaign-2 artifacts
+
+| what | where |
+|---|---|
+| widened signal audit + oracle | `scripts/diag_widen.py`, `diag_widen.json`, `diag_widen.npz` |
+| 5-seed arms | `figures/{w1_wide_mrr,w2_wide_ind,w3_wide_nov10,g2_twohop_w1}/` + `_results/_ranking` JSONs |
+| 2-seed probes | `figures/{s1_strat_f14,g1_k64_f14,g3_twohop_nov10}*` |
+| figure | `figures/tgn_global_frontier2.png` (`scripts/plot_frontier2.py`) |
+| code | `recency.py` FEAT_DIM_WIDE=23; `neighbors.py` strat mode; `--nbr-mode` in train/evaluate/ranking |
+| tests | `tests/test_tgn_wide.py` (5); suite 90 |
+
+NOTE for reuse: models trained with `--nbr-mode strat` or nonstandard `--k`
+must be evaluated with the same flags (the store is rebuilt at eval; there
+is no checkpoint record of it).
+
+## Remaining open questions
+
+1. Two-calibration heads (unchanged; the one lever not yet tried for
+   holding hist 0.90 and MRR 0.37 in one artifact).
+2. The unseen-inductive stratum (0.59 vs seen 0.76): novelty negatives
+   restricted to *seen-in-test-like* pairs might lift unseen without the
+   random-AU-ROC cost.
+3. Whether G2 + novelty at 5 seeds (G3 extended) lands a single model at
+   ind ≥ 0.65 AND MRR ≥ 0.355 — the 2-seed probe says close but not free.

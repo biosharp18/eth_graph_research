@@ -1,0 +1,36 @@
+[seed 2] epoch 0 loss 1.9012 val_ap 0.8029 val_mrr 0.5142
+[seed 2] epoch 1 loss 1.6234 val_ap 0.8166 val_mrr 0.5863
+[seed 2] epoch 2 loss 1.5160 val_ap 0.8101 val_mrr 0.5729
+[seed 2] epoch 3 loss 1.4735 val_ap 0.8208 val_mrr 0.5719
+[seed 2] epoch 4 loss 1.4497 val_ap 0.8284 val_mrr 0.5874
+[seed 2] epoch 5 loss 1.4141 val_ap 0.8285 val_mrr 0.5767
+[seed 2] epoch 6 loss 1.3848 val_ap 0.8357 val_mrr 0.5706
+[seed 2] epoch 7 loss 1.3618 val_ap 0.8420 val_mrr 0.5730
+[seed 2] epoch 8 loss 1.3447 val_ap 0.8434 val_mrr 0.5770
+[seed 2] epoch 9 loss 1.3335 val_ap 0.8433 val_mrr 0.5662
+seed 2: best val AP 0.6976 (10 epochs)
+[seed 3] epoch 0 loss 1.9266 val_ap 0.8099 val_mrr 0.5182
+[seed 3] epoch 1 loss 1.6492 val_ap 0.8131 val_mrr 0.5599
+[seed 3] epoch 2 loss 1.5275 val_ap 0.8151 val_mrr 0.5901
+[seed 3] epoch 3 loss 1.4752 val_ap 0.8199 val_mrr 0.5868
+[seed 3] epoch 4 loss 1.4503 val_ap 0.8281 val_mrr 0.5760
+[seed 3] epoch 5 loss 1.4119 val_ap 0.8294 val_mrr 0.5647
+[seed 3] epoch 6 loss 1.3996 val_ap 0.8358 val_mrr 0.5650
+[seed 3] epoch 7 loss 1.3604 val_ap 0.8328 val_mrr 0.5546
+[seed 3] epoch 8 loss 1.3470 val_ap 0.8392 val_mrr 0.5570
+seed 3: best val AP 0.6937 (9 epochs)
+[seed 4] epoch 0 loss 1.9066 val_ap 0.8040 val_mrr 0.5312
+[seed 4] epoch 1 loss 1.6488 val_ap 0.8141 val_mrr 0.5580
+[seed 4] epoch 2 loss 1.5233 val_ap 0.8224 val_mrr 0.5973
+[seed 4] epoch 3 loss 1.4848 val_ap 0.8254 val_mrr 0.5899
+[seed 4] epoch 4 loss 1.4393 val_ap 0.8308 val_mrr 0.5941
+[seed 4] epoch 5 loss 1.4175 val_ap 0.8307 val_mrr 0.5958
+[seed 4] epoch 6 loss 1.3891 val_ap 0.8367 val_mrr 0.5912
+[seed 4] epoch 7 loss 1.3735 val_ap 0.8386 val_mrr 0.5988
+[seed 4] epoch 8 loss 1.3512 val_ap 0.8432 val_mrr 0.5973
+[seed 4] epoch 9 loss 1.3399 val_ap 0.8459 val_mrr 0.5914
+[seed 4] epoch 10 loss 1.3207 val_ap 0.8472 val_mrr 0.5908
+[seed 4] epoch 11 loss 1.3143 val_ap 0.8509 val_mrr 0.5841
+[seed 4] epoch 12 loss 1.2967 val_ap 0.8488 val_mrr 0.5746
+[seed 4] epoch 13 loss 1.2921 val_ap 0.8528 val_mrr 0.5633
+seed 4: best val AP 0.7097 (14 epochs)
