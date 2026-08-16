@@ -1,9 +1,17 @@
-# tgn_global — results (2026-08-14)
+# tgn_global — results (2026-08-14; protocol correction 2026-08-16)
 
 > **Campaign 2 (same day, later) superseded parts of this file — see
 > "Campaign 2" section at the bottom. Headline updates: recency heuristic
 > beaten on all four ranking metrics (G2: MRR 0.3707, h@1 0.3086,
 > h@10 0.4788, h@100 0.6015), inductive raised to 0.6601 (W2).**
+
+> **2026-08-16 PROTOCOL CORRECTION: every AU-ROC in this file uses the
+> LEGACY protocol, which deviates from the DGB paper. The paper-faithful
+> reruns are in the "DGB protocol correction" section at the very bottom;
+> under the corrected metric W2's inductive is 0.7298 and the "0.60 roof"
+> narrative changes materially. Deployment-ranking numbers (MRR/hits@k)
+> are unaffected. Legacy AU-ROCs remain valid as internal comparisons
+> (same frozen pools across all models).**
 
 **TL;DR.** The ~0.60 inductive AU-ROC roof is broken: **0.6163 ± 0.0056**
 (5 seeds, frozen protocol) by giving the TGN *global-in-time* awareness —
@@ -215,3 +223,66 @@ is no checkpoint record of it).
    random-AU-ROC cost.
 3. Whether G2 + novelty at 5 seeds (G3 extended) lands a single model at
    ind ≥ 0.65 AND MRR ≥ 0.355 — the 2-seed probe says close but not free.
+
+---
+
+# DGB protocol correction (2026-08-16)
+
+A review of the DGB paper's code showed our AU-ROC protocol (built for the
+TGAT baseline and frozen since) deviates from the paper in five ways:
+per-day global AUROC instead of **per-batch (200 edges) mean**; historical
+pool frozen at the test split instead of **accumulating through test**;
+inductive pool drawn from ALL test-only pairs (including future ones)
+instead of **test-only pairs observed so far, random-padded when short**;
+and random negatives as never-seen uniform pairs instead of
+**source-preserving random destinations with only a batch-collision
+check**. `src/tgn/evaluate_dgb.py` implements the paper-faithful protocol
+(7 property tests); the legacy protocol is untouched — its numbers remain
+valid as internal comparisons on identical frozen pools.
+
+## Corrected AU-ROC (per-batch mean, 5 seeds; pad_frac inductive = 0.06)
+
+| model | random | historical | inductive |
+|---|---|---|---|
+| TGN baseline (BCE) | 0.9307 ± .004 | 0.6316 ± .016 | 0.4748 ± .010 |
+| TGN hard-CE (old headline) | 0.8746 ± .005 | **0.8818 ± .003** | 0.6754 ± .011 |
+| pair-recency pfpop_mrr | 0.9294 ± .005 | 0.8045 ± .010 | 0.5496 ± .011 |
+| f14 (c1 MRR arm) | 0.9298 ± .005 | 0.7961 ± .013 | 0.5210 ± .012 |
+| c1 inductive arm | 0.8941 ± .008 | 0.8239 ± .010 | 0.7104 ± .010 |
+| W1 wide | 0.9269 ± .006 | 0.8192 ± .006 | 0.5878 ± .017 |
+| G2 wide + two-hop | 0.9285 ± .005 | 0.8217 ± .003 | 0.5957 ± .010 |
+| W3 wide + nov .1 | 0.9189 ± .008 | 0.8156 ± .005 | 0.6933 ± .013 |
+| **W2 wide + nov .2** | 0.9024 ± .006 | 0.8195 ± .008 | **0.7298 ± .020** |
+| EdgeBank inf / tw | 0.763 / 0.721 | 0.265 / 0.614 | 0.295 / 0.252 |
+
+Figure: `figures/tgn_dgb_correction.png`. Raw JSONs (incl. per-seed and
+global-AUROC variants): `figures/dgb/*_dgb.json`.
+
+## What the correction changes — honest revision of conclusions
+
+1. **The "0.60 inductive roof" was partly a protocol artifact.** Under the
+   paper's definition (negatives = test-only pairs *already observed*,
+   history accumulating), the old hard-CE model already scores 0.6754 —
+   there never was a 0.60 roof under the paper's metric. The legacy
+   inductive pool included future never-yet-active pairs, which made the
+   task closer to "new-pair timing" and capped everything near 0.6.
+2. **The novelty-negative mechanism is vindicated, more strongly than
+   before.** Corrected inductive rewards exactly what novelty negatives
+   teach (demoting recently-first-seen pairs that are off today): W2 leads
+   at 0.7298, +0.054 over hard-CE, and the novelty dial is worth +0.13-0.14
+   over its no-novelty twins (W1/G2 ≈ 0.59). Ordering among the campaign
+   arms is preserved; margins widen.
+3. **MRR-oriented mixtures pay an inductive price that legacy hid**:
+   pfpop/f14 fall to 0.52-0.55 (they promote recurring pairs — the
+   corrected negatives). The G2 deployment champion sits mid-pack (0.596)
+   on corrected inductive; W3 (nov .1) is the balanced pick at 0.6933
+   inductive with near-champion ranking numbers.
+4. **Deployment ranking (MRR/hits@k) is untouched** by this correction —
+   the recency-heuristic win stands as reported.
+5. EdgeBank's corrected inductive (0.25-0.30) matches the paper's
+   qualitative finding that memorization baselines collapse under harder
+   negatives — a good sampler-integrity check.
+
+Caveat: per-batch AUROC with per-batch negatives is noisier per seed and
+sensitive to the padding fraction (0.06 here, concentrated in the earliest
+test batches, where the inductive pool is nearly empty by construction).

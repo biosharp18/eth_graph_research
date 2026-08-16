@@ -1,0 +1,4 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+random: batch-mean auroc 0.9285 (pad 0.000)
+historical: batch-mean auroc 0.8217 (pad 0.000)
+inductive: batch-mean auroc 0.5957 (pad 0.060)

@@ -321,3 +321,50 @@ h@1 +0.031, h@10 +0.005, h@100 +0.075) and holds ind 0.6215 / hist 0.8423.
 W2 (0.6601) stays the inductive champion. Figure
 `figures/tgn_global_frontier2.png`; write-up updated in `results.md`.
 Campaign closed.
+
+# Protocol correction (2026-08-16, user directive)
+
+The AU-ROC protocol used since the TGAT baseline diverges from the DGB
+paper (Poursafaei et al. 2022). Differences found (ours → paper):
+1. one GLOBAL AUROC over the test set → per-batch (200 edges) AUROC,
+   MEAN over batches;
+2. negative pools per DAY → per BATCH;
+3. historical pool = pairs seen before the TEST SPLIT (frozen) → pairs
+   seen before the CURRENT BATCH (history accumulates through test);
+4. inductive pool = ALL test-only pairs incl. future ones → test-only
+   pairs OBSERVED SO FAR, short pools PADDED with random pairs (early
+   test batches are mostly padding);
+5. random negatives = uniform never-seen pairs (both endpoints random)
+   → source kept from the positive, random destination from the data's
+   destination set, only batch-collision exclusion.
+
+New module `src/tgn/evaluate_dgb.py` (paper-faithful; legacy protocol left
+untouched for internal comparability). Reports per-batch-mean AUROC (the
+paper's number), global AUROC (reference), and pad_frac (the padding share,
+which materially shapes historical/inductive numbers). 7 property tests in
+`tests/test_tgn_dgb.py` (accumulation-through-test, first-inductive-batch
+fully padded, source preservation, batch-collision exclusion, determinism,
+per-batch mean hand-check, EdgeBank batch semantics).
+Rerunning: campaign-2 arms (W1, W2, W3, G2), campaign-1 arms
+(g_headline_ind, g_f14_mrr), legacy references (pfpop_mrr, tgn_hard,
+tgn baseline), EdgeBank inf/tw.
+
+Notable implication to verify in the numbers: under (3) and (4) the
+paper's "inductive" negatives are *recurring test pairs seen so far* —
+precisely the population our novelty negatives were built to model — while
+the legacy pools also included never-yet-active future pairs. Expect level
+shifts everywhere; relative ordering is the honest question.
+
+## 2026-08-16 — corrected numbers (10 reruns, 5 seeds each)
+
+Full table in `results.md` §"DGB protocol correction"; figure
+`figures/tgn_dgb_correction.png`; JSONs `figures/dgb/`. Highlights:
+- **W2 inductive 0.7298 ± .020** (novelty arms: c1-ind 0.7104, W3 0.6933);
+  hard-CE 0.6754; no-novelty wide arms 0.588-0.596; pfpop/f14 0.52-0.55;
+  EdgeBank inductive collapses to 0.25-0.30 (paper-consistent).
+- **Honest revision: the "0.60 roof" was partly a legacy-protocol
+  artifact** — under the paper's metric hard-CE was already at 0.675.
+  The novelty-negative mechanism is *more* valuable under the corrected
+  metric (+0.13 over its no-novelty twins); campaign-arm ordering
+  preserved. Ranking metrics unaffected; recency win stands.
+- pad_frac (inductive) = 0.06, concentrated in the earliest test batches.
