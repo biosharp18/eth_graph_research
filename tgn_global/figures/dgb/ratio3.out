@@ -1,0 +1,13 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+random tgn_hard: 0.8748 (pad 0.000)
+random pfpop_mrr: 0.9307 (pad 0.000)
+random g2_twohop_w1: 0.9289 (pad 0.000)
+random w2_wide_ind: 0.9032 (pad 0.000)
+historical tgn_hard: 0.8821 (pad 0.000)
+historical pfpop_mrr: 0.8059 (pad 0.000)
+historical g2_twohop_w1: 0.8229 (pad 0.000)
+historical w2_wide_ind: 0.8208 (pad 0.000)
+inductive tgn_hard: 0.7039 (pad 0.131)
+inductive pfpop_mrr: 0.5919 (pad 0.131)
+inductive g2_twohop_w1: 0.6334 (pad 0.131)
+inductive w2_wide_ind: 0.7544 (pad 0.131)

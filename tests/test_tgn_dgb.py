@@ -3,7 +3,7 @@ import numpy as np
 
 from tgat.data import DailyGraph
 from tgn.evaluate_dgb import (batch_bounds, dgb_negatives, edgebank_scores_dgb,
-                              per_batch_auroc)
+                              neg_days, per_batch_auroc)
 
 
 def toy_graph():
@@ -94,6 +94,23 @@ def test_per_batch_auroc_hand_check():
     neg = np.array([1.0, 1.0, 1.0, 1.0])
     mean, vals = per_batch_auroc(pos, neg, batch_size=2)
     assert vals == [1.0, 0.0] and mean == 0.5
+
+
+def test_n_neg_ratio_shapes_and_padding():
+    g = toy_graph()
+    ns, nd, pad = dgb_negatives(g, "inductive", seed=0, batch_size=3, n_neg=3)
+    n = len(g.src) - g.val_end
+    assert ns.shape == (n * 3,) and pad.shape == (n * 3,)
+    # first batch: empty pool -> all 9 rows padded
+    assert pad[:9].all()
+    # higher demand can only raise the padded share vs n_neg=1
+    _, _, pad1 = dgb_negatives(g, "inductive", seed=0, batch_size=3, n_neg=1)
+    assert pad.mean() >= pad1.mean()
+    # per-batch auroc consumes the batch-major layout
+    pos = np.linspace(1, 2, n)
+    neg = np.zeros(n * 3)
+    mean, vals = per_batch_auroc(pos, neg, batch_size=3, n_neg=3)
+    assert mean == 1.0
 
 
 def test_edgebank_dgb_counts_earlier_test_batches():

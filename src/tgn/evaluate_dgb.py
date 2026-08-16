@@ -39,27 +39,36 @@ def batch_bounds(n_test: int, batch_size: int):
             for lo in range(0, n_test, batch_size)]
 
 
-def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200):
-    """Per-batch DGB negatives for the test span.
+def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200,
+                  span=None, n_neg: int = 1):
+    """Per-batch DGB negatives for an evaluation span (default: test).
 
-    Returns (neg_src, neg_dst, pad_flag) arrays of length n_test; negatives
-    share their positive's timestamp. pad_flag marks rows where a short
-    historical/inductive pool fell back to a random pair; it is always
-    False for the random strategy."""
+    span = (lo, hi) event indices; "inductive" pairs are those never seen
+    BEFORE the span that have been observed within it so far — for the val
+    span that means val-only pairs, mirroring the test-span construction.
+
+    n_neg negatives per positive (paper: 1). Historical/inductive pools are
+    sampled without replacement per batch up to npos*n_neg, then padded with
+    random pairs — so raising n_neg raises pad_frac wherever the pool is
+    smaller than the demand.
+
+    Returns (neg_src, neg_dst, pad_flag) arrays of length span*n_neg,
+    ordered batch-major (a batch's negatives are contiguous); negatives
+    share the batch's timestamps. pad_flag marks random-padded rows; it is
+    always False for the random strategy."""
     rng = np.random.default_rng(seed)
-    test = slice(g.val_end, len(g.src))
-    ts, td = g.src[test], g.dst[test]
+    lo0, hi0 = span if span is not None else (g.val_end, len(g.src))
+    ts, td = g.src[lo0:hi0], g.dst[lo0:hi0]
     n_test = len(ts)
     uniq_src = np.unique(g.src)
     uniq_dst = np.unique(g.dst)
-    train_val_pairs = set(zip(g.src[:g.val_end].tolist(),
-                              g.dst[:g.val_end].tolist()))
+    train_val_pairs = set(zip(g.src[:lo0].tolist(), g.dst[:lo0].tolist()))
     hist = set(train_val_pairs)
     test_seen = set()
 
-    ns = np.empty(n_test, np.int64)
-    nd = np.empty(n_test, np.int64)
-    pad = np.zeros(n_test, bool)
+    ns = np.empty(n_test * n_neg, np.int64)
+    nd = np.empty(n_test * n_neg, np.int64)
+    pad = np.zeros(n_test * n_neg, bool)
 
     def rand_pair(batch_pairs):
         while True:
@@ -72,52 +81,71 @@ def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200):
         bs, bd = ts[lo:hi], td[lo:hi]
         batch_pairs = set(zip(bs.tolist(), bd.tolist()))
         npos = hi - lo
+        need = npos * n_neg
+        olo = lo * n_neg  # output offset (batch-major)
         if strategy == "random":
-            for i in range(npos):
-                s = int(bs[i])
+            for i in range(need):
+                s = int(bs[i % npos])
                 while True:
                     d = int(uniq_dst[rng.integers(len(uniq_dst))])
                     if (s, d) not in batch_pairs:
                         break
-                ns[lo + i], nd[lo + i] = s, d
+                ns[olo + i], nd[olo + i] = s, d
         else:
             pool_set = (hist if strategy == "historical" else test_seen)
             pool = sorted(pool_set - batch_pairs)
-            take = min(npos, len(pool))
+            take = min(need, len(pool))
             chosen = ([pool[j] for j in
                        rng.choice(len(pool), size=take, replace=False)]
                       if take else [])
-            for i in range(npos):
+            for i in range(need):
                 if i < take:
-                    ns[lo + i], nd[lo + i] = chosen[i]
+                    ns[olo + i], nd[olo + i] = chosen[i]
                 else:
-                    ns[lo + i], nd[lo + i] = rand_pair(batch_pairs)
-                    pad[lo + i] = True
+                    ns[olo + i], nd[olo + i] = rand_pair(batch_pairs)
+                    pad[olo + i] = True
         hist |= batch_pairs
         test_seen |= {p for p in batch_pairs if p not in train_val_pairs}
     return ns, nd, pad
 
 
-def per_batch_auroc(pos_sc, neg_sc, batch_size: int = 200):
+def neg_days(g, batch_size: int = 200, span=None, n_neg: int = 1):
+    """Timestamps for dgb_negatives' batch-major rows: negative i belongs to
+    positive (i // n_neg) ... within its batch, cycled i % npos."""
+    lo0, hi0 = span if span is not None else (g.val_end, len(g.src))
+    tt = g.day[lo0:hi0]
+    out = np.empty(len(tt) * n_neg, np.int64)
+    for lo, hi in batch_bounds(len(tt), batch_size):
+        npos = hi - lo
+        for i in range(npos * n_neg):
+            out[lo * n_neg + i] = tt[lo + i % npos]
+    return out
+
+
+def per_batch_auroc(pos_sc, neg_sc, batch_size: int = 200, n_neg: int = 1):
     vals = []
     for lo, hi in batch_bounds(len(pos_sc), batch_size):
-        y = np.r_[np.ones(hi - lo), np.zeros(hi - lo)]
-        vals.append(auroc(y, np.r_[pos_sc[lo:hi], neg_sc[lo:hi]]))
+        npos = hi - lo
+        y = np.r_[np.ones(npos), np.zeros(npos * n_neg)]
+        vals.append(auroc(y, np.r_[pos_sc[lo:hi],
+                                   neg_sc[lo * n_neg:hi * n_neg]]))
     return float(np.mean(vals)), vals
 
 
-def edgebank_scores_dgb(g, variant, ns, nd, batch_size: int = 200):
+def edgebank_scores_dgb(g, variant, ns, nd, batch_size: int = 200,
+                        span=None, n_neg: int = 1):
     """EdgeBank under the DGB protocol: memory = all edges strictly before
-    the current batch (advanced per batch, so earlier test batches count)."""
-    test = slice(g.val_end, len(g.src))
-    ts, td, tt = g.src[test], g.dst[test], g.day[test]
+    the current batch (advanced per batch, so earlier in-span batches
+    count). span = (lo, hi) event indices; default is the test span.
+    ns/nd are batch-major with n_neg negatives per positive."""
+    lo0, hi0 = span if span is not None else (g.val_end, len(g.src))
+    ts, td, tt = g.src[lo0:hi0], g.dst[lo0:hi0], g.day[lo0:hi0]
     w = int(tt.max() - tt.min()) + 1
     last = {}
-    for s, d, t in zip(g.src[:g.val_end], g.dst[:g.val_end],
-                       g.day[:g.val_end]):
+    for s, d, t in zip(g.src[:lo0], g.dst[:lo0], g.day[:lo0]):
         last[(int(s), int(d))] = int(t)
     pos_sc = np.zeros(len(ts))
-    neg_sc = np.zeros(len(ts))
+    neg_sc = np.zeros(len(ts) * n_neg)
 
     def hit(pair, day):
         if pair not in last:
@@ -125,9 +153,13 @@ def edgebank_scores_dgb(g, variant, ns, nd, batch_size: int = 200):
         return 1.0 if variant == "inf" or last[pair] > day - w else 0.0
 
     for lo, hi in batch_bounds(len(ts), batch_size):
+        npos = hi - lo
         for i in range(lo, hi):
             pos_sc[i] = hit((int(ts[i]), int(td[i])), int(tt[i]))
-            neg_sc[i] = hit((int(ns[i]), int(nd[i])), int(tt[i]))
+        for j in range(npos * n_neg):
+            o = lo * n_neg + j
+            day = int(tt[lo + j % npos])
+            neg_sc[o] = hit((int(ns[o]), int(nd[o])), day)
         for i in range(lo, hi):
             last[(int(ts[i]), int(td[i]))] = int(tt[i])
     return pos_sc, neg_sc

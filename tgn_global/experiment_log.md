@@ -368,3 +368,30 @@ Full table in `results.md` §"DGB protocol correction"; figure
   metric (+0.13 over its no-novelty twins); campaign-arm ordering
   preserved. Ranking metrics unaffected; recency win stands.
 - pad_frac (inductive) = 0.06, concentrated in the earliest test batches.
+
+## 2026-08-16 — EdgeBank validation-span check + 3:1 ratio experiment
+
+**Validation-span EdgeBank (user question "was val high, test low?"): NO —
+validation mirrors test within ~0.006** (inf: val 0.770/0.272/0.300 vs
+test 0.763/0.265/0.295 across random/hist/inductive; compositions p≈0.54,
+q≈0.94 in both spans). The inversion is structural (pool construction),
+visible at validation time; a val-calibrated sign flip would transfer to
+test on hist/induc but craters random (0.77→0.23). Protection = the joint
+three-column report. Side benefit: val↔test agreement shows the corrected
+protocol is temporally stable. `dgb_negatives`/`edgebank_scores_dgb` now
+take a `span` argument.
+
+**3:1 negative:positive ratio (75/25 split)** (`--n-neg 3` support added,
+`scripts/run_dgb_ratio.py`, `figures/dgb/ratio3_dgb.json`; 8 tests):
+- random/historical: unchanged (Δ ≤ 0.0014) — AUROC prevalence-invariance
+  confirmed empirically; historical pool (16,139 pairs) never exhausts.
+- inductive: ALL models rise +0.025..+0.042 (tgn_hard 0.675→0.704,
+  pfpop 0.550→0.592, G2 0.596→0.633, W2 0.730→0.754; EdgeBank inf
+  0.295→0.330). Cause is purely mechanical: the inductive pool (2,904
+  distinct pairs) can't fill 3x demand, padding doubles 6.0%→13.1%
+  (predicted exactly from pool sizes), and random-like pads dilute the
+  hard setting toward random NS. Mixture arithmetic reproduces the shifts.
+- Ranking of models unchanged; seed std NOT reduced (0.0185 vs 0.0195) —
+  extra shared-pool negatives don't buy precision here.
+Conclusion: the 1:1 protocol is the more conservative/faithful setting;
+higher ratios quietly weaken the inductive test via padding.
