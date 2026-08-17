@@ -288,3 +288,30 @@ global-AUROC variants): `figures/dgb/*_dgb.json`.
 Caveat: per-batch AUROC with per-batch negatives is noisier per seed and
 sensitive to the padding fraction (0.06 here, concentrated in the earliest
 test batches, where the inductive pool is nearly empty by construction).
+
+---
+
+# Post-correction studies (2026-08-16)
+
+Full details in `experiment_log.md`; design rationale in
+`design-notes.md`. Summary:
+
+1. **Validation-span EdgeBank**: the inductive inversion is structural and
+   visible at validation (val 0.300 vs test 0.295) — no val/test surprise;
+   the joint three-column report is what defeats sign-flip gaming.
+2. **3:1 negative ratio**: random/historical unchanged (AUROC prevalence
+   invariance); inductive inflates +0.025–0.042 purely because padding
+   doubles (6.0% → 13.1%, predicted exactly from pool sizes). 1:1 is the
+   conservative setting.
+3. **W2 at a fixed 50 epochs**: the stopping criterion peaks at epochs
+   3–11 (adaptive stop reproduced), but the FINAL-epoch model is a new
+   inductive record — **DGB 0.8240 ± .004** with historical 0.8536 — at
+   −0.08 MRR. The epoch count is a calibration dial on the
+   paired-vs-ranking frontier; both checkpoints kept
+   (`figures/w2_fixed50{,_last}/`), curves with the criterion in
+   `figures/w2_fixed50_curves.png`.
+4. **TGAT under DGB**: 0.9260 / 0.6805 / 0.4645 — below chance on
+   corrected inductive, the mild form of EdgeBank's memorization failure.
+5. **G2 ranking numbers corrected** (0.3707 → 0.3689 etc.): the first
+   readout caught the per-seed-flushed JSON at 3/5 seeds; deterministic
+   re-run verified. Conclusion (beats recency on all four) unchanged.
