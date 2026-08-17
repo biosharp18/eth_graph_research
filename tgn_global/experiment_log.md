@@ -395,3 +395,36 @@ take a `span` argument.
   extra shared-pool negatives don't buy precision here.
 Conclusion: the 1:1 protocol is the more conservative/faithful setting;
 higher ratios quietly weaken the inductive test via padding.
+
+## 2026-08-16 — W2 at fixed 50 epochs (user directive): epochs are a dial
+
+Setup: W2 recipe, `--epochs 50 --patience 50` (early stopping disabled),
+new `--save-last` flag stores the epoch-49 weights alongside the
+best-criterion checkpoint. 5 seeds in parallel. Curves (incl. the combo
+criterion): `figures/w2_fixed50_curves.png`. Validation dynamics: matched
+val-AP saturates ~0.85 by epoch ~12 and plateaus; sampled val-MRR peaks
+at epoch 4-5 (~0.575) and decays to ~0.52; combo peaks epochs 3-11 and
+declines thereafter — the adaptive stop reproduced the same checkpoints
+(best-criterion fixed-50 ≈ original W2 within noise, sanity passed).
+
+**Final-epoch (49) models vs best-criterion models (5 seeds):**
+
+| metric | best-criterion (ep 3-11) | final epoch 49 |
+|---|---|---|
+| DGB inductive | 0.7356 ± .024 | **0.8240 ± .004** |
+| DGB historical | 0.8209 ± .010 | **0.8536 ± .003** |
+| DGB random | 0.9038 | 0.8942 |
+| legacy ind / hist | 0.6633 / 0.8280 | **0.6789 / 0.8558** |
+| deploy MRR / h@1 | 0.3323 / 0.2777 | 0.2517 / 0.2082 |
+
+Reading: the early stop was optimal ONLY for the ranking-weighted combo
+objective. Paired-classification metrics keep improving far past it —
+epoch-49 W2 is a **new inductive record by a wide margin (DGB 0.8240,
++0.09 over any prior model; legacy 0.6789 also a record)** and nearly
+matches hard-CE's historical (0.854 vs 0.882), at a steep ranking cost
+(MRR −0.08). Seed variance on DGB inductive collapses (±0.024 → ±0.004).
+The epoch count is therefore another calibration dial on the same
+paired-vs-ranking frontier: converged = calibrated to the training noise
+mixture (best for AUROC benchmarks), early = ranking compromise.
+Checkpoints: `figures/w2_fixed50/` (best), `figures/w2_fixed50_last/`
+(epoch 49); eval JSONs alongside + `figures/dgb/w2_fixed50*_dgb.json`.

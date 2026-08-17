@@ -175,7 +175,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               hard_hinge=0.0, select="ap", val_mrr_events=500,
               val_mrr_cands=100, in_batch=False, pop_frac=0.0,
               pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp",
-              nov_frac=0.0, nov_window=30, n_layers=1, nbr_mode="recent"):
+              nov_frac=0.0, nov_window=30, n_layers=1, nbr_mode="recent",
+              keep_last=False):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -415,9 +416,14 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
             if bad >= patience:
                 break
 
+    last_state = copy.deepcopy(model.state_dict()) if keep_last else None
     model.load_state_dict(best_state)
-    return model, {"best_val_ap": best_ap, "epochs_run": len(history),
-                   "history": history}
+    info = {"best_val_ap": best_ap, "epochs_run": len(history),
+            "history": history}
+    if keep_last:
+        # popped by the caller before JSON serialization
+        info["_last_state"] = last_state
+    return model, info
 
 
 def main():
@@ -451,6 +457,9 @@ def main():
     ap_.add_argument("--n-layers", type=int, default=1, choices=[1, 2])
     ap_.add_argument("--nbr-mode", choices=["recent", "strat"],
                      default="recent")
+    ap_.add_argument("--save-last", action="store_true",
+                     help="also save the final-epoch weights as "
+                          "tgn_seed{seed}_last.pt (for fixed-epoch runs)")
     ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
                      choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
                               FEAT_DIM_GLOBAL_BUCKETS, FEAT_DIM_WIDE])
@@ -479,8 +488,12 @@ def main():
                                 head=args.head, nov_frac=args.nov_frac,
                                 nov_window=args.nov_window,
                                 n_layers=args.n_layers,
-                                nbr_mode=args.nbr_mode)
+                                nbr_mode=args.nbr_mode,
+                                keep_last=args.save_last)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
+        if args.save_last:
+            torch.save(info.pop("_last_state"),
+                       out / f"tgn_seed{seed}_last.pt")
         log[seed] = info
         print(f"seed {seed}: best val AP {info['best_val_ap']:.4f} "
               f"({info['epochs_run']} epochs)", flush=True)
