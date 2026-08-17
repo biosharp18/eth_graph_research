@@ -312,12 +312,15 @@ W3 (nov .1 midpoint, 2s).
 
 | config | rand | hist | inductive | MRR | h@1 | h@10 | h@100 |
 |---|---|---|---|---|---|---|---|
-| **G2 wide+two-hop (5s)** | 0.9789 | 0.8423 | 0.6215±.003 | **0.3707±.003** | **0.3086±.003** | **0.4788±.005** | **0.6015±.005** |
+| **G2 wide+two-hop (5s)** | 0.9789 | 0.8423 | 0.6215±.003 | **0.3689±.004** | **0.3059±.004** | **0.4787±.004** | **0.6011±.004** |
 | W3 nov.1 (5s) | 0.9641 | 0.8263 | 0.6534±.008 | 0.3525 | 0.2930 | 0.4555 | 0.5873 |
 | G3 two-hop+nov.1 (2s) | 0.9696 | 0.8404 | 0.6584 | 0.3530 | 0.2935 | 0.4537 | 0.5858 |
 
-G2 beats recency on ALL FOUR ranking metrics at 5 seeds (MRR +0.017,
-h@1 +0.031, h@10 +0.005, h@100 +0.075) and holds ind 0.6215 / hist 0.8423.
+G2 beats recency on ALL FOUR ranking metrics at 5 seeds (MRR +0.015,
+h@1 +0.028, h@10 +0.005, h@100 +0.075) and holds ind 0.6215 / hist 0.8423.
+[Corrected 2026-08-16: initial G2 ranking readout caught the JSON at 3/5
+seeds (tgn.ranking flushes per seed); 5-seed truth re-verified by a
+deterministic re-run — same conclusion, slightly smaller margins.]
 W2 (0.6601) stays the inductive champion. Figure
 `figures/tgn_global_frontier2.png`; write-up updated in `results.md`.
 Campaign closed.

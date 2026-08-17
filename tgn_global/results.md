@@ -2,8 +2,10 @@
 
 > **Campaign 2 (same day, later) superseded parts of this file — see
 > "Campaign 2" section at the bottom. Headline updates: recency heuristic
-> beaten on all four ranking metrics (G2: MRR 0.3707, h@1 0.3086,
-> h@10 0.4788, h@100 0.6015), inductive raised to 0.6601 (W2).**
+> beaten on all four ranking metrics (G2: MRR 0.3689, h@1 0.3059,
+> h@10 0.4787, h@100 0.6011), inductive raised to 0.6601 (W2).
+> (G2 ranking numbers corrected 2026-08-16: first report read the ranking
+> JSON mid-write at 3/5 seeds — tgn.ranking flushes per seed.)**
 
 > **2026-08-16 PROTOCOL CORRECTION: every AU-ROC in this file uses the
 > LEGACY protocol, which deviates from the DGB paper. The paper-faithful
@@ -149,7 +151,7 @@ AU-ROC reached 0.6601 — 96% of the measured feature-family oracle.
 
 | model | rand | hist | inductive | MRR | h@1 | h@10 | h@100 |
 |---|---|---|---|---|---|---|---|
-| **G2 wide + two-hop** (deploy champion) | 0.9789 | 0.8423 | 0.6215 ± .003 | **0.3707 ± .003** | **0.3086 ± .003** | **0.4788 ± .005** | **0.6015 ± .005** |
+| **G2 wide + two-hop** (deploy champion) | 0.9789 | 0.8423 | 0.6215 ± .003 | **0.3689 ± .004** | **0.3059 ± .004** | **0.4787 ± .004** | **0.6011 ± .004** |
 | W1 wide feats, 1-hop | 0.9782 | 0.8402 | 0.6200 ± .007 | 0.3658 ± .004 | 0.3045 | 0.4731 | 0.5914 |
 | **W2 wide + nov .2** (inductive champion) | 0.9465 | 0.8271 | **0.6601 ± .013** | 0.3381 | 0.2817 | 0.4368 | 0.5676 |
 | W3 wide + nov .1 (balanced) | 0.9641 | 0.8263 | 0.6534 ± .008 | 0.3525 | 0.2930 | 0.4555 | 0.5873 |
