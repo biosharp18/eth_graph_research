@@ -133,11 +133,14 @@ def per_batch_auroc(pos_sc, neg_sc, batch_size: int = 200, n_neg: int = 1):
 
 
 def edgebank_scores_dgb(g, variant, ns, nd, batch_size: int = 200,
-                        span=None, n_neg: int = 1):
+                        span=None, n_neg: int = 1, freeze_memory=False):
     """EdgeBank under the DGB protocol: memory = all edges strictly before
     the current batch (advanced per batch, so earlier in-span batches
     count). span = (lo, hi) event indices; default is the test span.
-    ns/nd are batch-major with n_neg negatives per positive."""
+    ns/nd are batch-major with n_neg negatives per positive.
+    freeze_memory=True stops memory updates at the span start (train+val
+    only) — the ablation separating memory accumulation from the sampler's
+    pool accumulation."""
     lo0, hi0 = span if span is not None else (g.val_end, len(g.src))
     ts, td, tt = g.src[lo0:hi0], g.dst[lo0:hi0], g.day[lo0:hi0]
     w = int(tt.max() - tt.min()) + 1
@@ -160,8 +163,9 @@ def edgebank_scores_dgb(g, variant, ns, nd, batch_size: int = 200,
             o = lo * n_neg + j
             day = int(tt[lo + j % npos])
             neg_sc[o] = hit((int(ns[o]), int(nd[o])), day)
-        for i in range(lo, hi):
-            last[(int(ts[i]), int(td[i]))] = int(tt[i])
+        if not freeze_memory:
+            for i in range(lo, hi):
+                last[(int(ts[i]), int(td[i]))] = int(tt[i])
     return pos_sc, neg_sc
 
 

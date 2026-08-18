@@ -399,7 +399,29 @@ take a `span` argument.
 Conclusion: the 1:1 protocol is the more conservative/faithful setting;
 higher ratios quietly weaken the inductive test via padding.
 
-## 2026-08-16 — W2 at fixed 50 epochs (user directive): epochs are a dial
+## 2026-08-16 — EdgeBank inversion: proper three-front verification
+(user pushback: "intended behavior" was asserted beyond evidence — fixed)
+
+1. **Frozen-memory ablation** (`freeze_memory` flag in
+   `edgebank_scores_dgb`, tested): stop EdgeBank's memory at train+val and
+   inductive FLIPS 0.295 → 0.704 (inf; tw 0.252 → 0.623), because
+   test-only negative pairs become unseen (q 0.94 → 0.00) while 40.7% of
+   positives remain known. Historical stays inverted either way (q 0.92
+   frozen). The inversion is therefore 100% attributable to memory
+   accumulation through test.
+2. **DGB source verified** (EdgeBank/link_pred/edge_bank_baseline.py,
+   fetched from github.com/fpour/DGB): `learn_through_time` is HARDCODED
+   True — history = train+val + all prior test batches, per-batch AUROC
+   averaged, current batch excluded. Our accumulating implementation is
+   faithful to their code, not just their prose.
+3. **Paper's own numbers show the same inversion** (appendix Tables 6 &
+   10): EdgeBank∞ inductive AU-ROC = 0.43 (Wikipedia), 0.47 (Reddit),
+   0.22 (MOOC), 0.31 (UCI), 0.44 (Flights)... — below 0.5 on 12 of 13
+   datasets; historical similar (0.27-0.55). Our 0.295/0.252 are in the
+   published range. Caveat kept honest: the paper notes the "significant
+   drop" but never explicitly discusses the below-chance direction, so
+   "intended" remains an inference; what is verified is that it is a
+   direct, reproducible consequence of their hardcoded design. (user directive): epochs are a dial
 
 Setup: W2 recipe, `--epochs 50 --patience 50` (early stopping disabled),
 new `--save-last` flag stores the epoch-49 weights alongside the

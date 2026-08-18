@@ -113,6 +113,16 @@ def test_n_neg_ratio_shapes_and_padding():
     assert mean == 1.0
 
 
+def test_edgebank_frozen_memory_ignores_test_edges():
+    g = toy_graph()
+    ts, td = g.src[g.val_end:], g.dst[g.val_end:]
+    ns = np.full(len(ts), 3)
+    nd = np.full(len(ts), 9)  # (3,9) first appears IN test
+    ps, nsc = edgebank_scores_dgb(g, "inf", ns, nd, batch_size=3,
+                                  freeze_memory=True)
+    assert (nsc == 0.0).all()  # frozen memory never learns test pairs
+
+
 def test_edgebank_dgb_counts_earlier_test_batches():
     g = toy_graph()
     ts, td = g.src[g.val_end:], g.dst[g.val_end:]
