@@ -421,7 +421,39 @@ higher ratios quietly weaken the inductive test via padding.
    published range. Caveat kept honest: the paper notes the "significant
    drop" but never explicitly discusses the below-chance direction, so
    "intended" remains an inference; what is verified is that it is a
-   direct, reproducible consequence of their hardcoded design. (user directive): epochs are a dial
+   direct, reproducible consequence of their hardcoded design.
+
+## 2026-08-16 — two new test modes (user directive): symmetric inductive
+   and test-recurring
+
+`inductive_sym`: positives restricted to pairs never seen before test
+(59.3% of test events); negatives = standard inductive sampling.
+`test_recurring`: negative pool = ALL span-active pairs so far (train-seen
+allowed); positives unchanged. Runner `scripts/run_dgb_modes.py`,
+results `figures/dgb/modes_dgb.json`, suite 100.
+
+| model | inductive_sym | test_recurring | (std inductive) |
+|---|---|---|---|
+| W2 @50 epochs | **0.7813 ± .004** | **0.6918 ± .002** | 0.8240 |
+| TGN hard-CE | 0.6765 ± .010 | 0.6248 ± .007 | 0.6754 |
+| W2 (early stop) | 0.6519 ± .022 | 0.6166 ± .012 | 0.7298 |
+| G2 wide+two-hop | 0.5001 ± .012 | 0.5118 ± .010 | 0.5957 |
+| pfpop_mrr | 0.4955 ± .013 | 0.5005 ± .010 | 0.5496 |
+| EdgeBank inf / frozen | 0.1313 / **0.5000** | 0.2829 / 0.5353 | 0.2946 / 0.7036 |
+
+Findings:
+1. **Frozen EdgeBank = exactly 0.5000 in the symmetric mode** — its
+   frozen-memory "0.704" was pure construction (both sides unseen → all
+   ties), as designed. Accumulating EdgeBank inverts harder (0.131 =
+   0.5+(p−q)/2 with p≈0.20 test-repeat positives, q≈0.94).
+2. **The symmetric mode unmasks a hidden split**: the deployment-oriented
+   models (G2, pfpop) are at CHANCE (0.50) on genuinely-new-pair timing —
+   their standard-inductive 0.55-0.60 was carried entirely by seen
+   positives. Real skill on new relationships lives in novelty training
+   (W2@50 0.7813) and, notably, hard-CE (0.6765).
+3. test_recurring preserves the same ordering at lower levels (novelty
+   models still lead among pairs active in test regardless of origin).
+All pre-registered predictions from the launch message held. (user directive): epochs are a dial
 
 Setup: W2 recipe, `--epochs 50 --patience 50` (early stopping disabled),
 new `--save-last` flag stores the epoch-49 weights alongside the

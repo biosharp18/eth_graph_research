@@ -1,0 +1,12 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+inductive_sym tgn_hard: 0.6765
+inductive_sym pfpop_mrr: 0.4955
+inductive_sym g2_twohop_w1: 0.5001
+inductive_sym w2_wide_ind: 0.6519
+inductive_sym w2_fixed50_last: 0.7813
+test_recurring tgn_hard: 0.6248
+test_recurring pfpop_mrr: 0.5005
+test_recurring g2_twohop_w1: 0.5118
+test_recurring w2_wide_ind: 0.6166
+test_recurring w2_fixed50_last: 0.6918
+done
