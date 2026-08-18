@@ -453,7 +453,35 @@ Findings:
    (W2@50 0.7813) and, notably, hard-CE (0.6765).
 3. test_recurring preserves the same ordering at lower levels (novelty
    models still lead among pairs active in test regardless of origin).
-All pre-registered predictions from the launch message held. (user directive): epochs are a dial
+All pre-registered predictions from the launch message held.
+
+## 2026-08-16 — FDR/NPV on inductive_sym (val-chosen Youden threshold)
+
+`scripts/run_sym_fdr_npv.py` → `figures/dgb/sym_fdr_npv.json`. Threshold
+per model/seed = Youden J on the VAL-span inductive_sym construction,
+frozen, applied to test. Pool prevalence 0.372. TGAT included; EdgeBank at
+its single non-trivial threshold (flag = seen).
+
+| model | AUROC (pooled) | FDR | NPV |
+|---|---|---|---|
+| W2 @50 | 0.7774±.004 | 0.3362±.015 | 0.7941±.004 |
+| hard-CE | 0.6741±.011 | 0.2350±.024 | 0.7037±.002 |
+| W2 early | 0.6481±.023 | 0.1932±.018 | 0.7036±.002 |
+| G2 | 0.4957±.012 | 0.3942±.056 | 0.6717±.007 |
+| pfpop | 0.4890±.013 | 0.4119±.068 | 0.6669±.008 |
+| TGAT | 0.4000±.006 | 0.6229 | 0.8688 (low-volume flags) |
+| EdgeBank inf | 0.1330 | 0.8852 | 0.1134 |
+| EdgeBank frozen | 0.5000 | 0.0000 (VACUOUS: zero flags) | 0.6279 (=1−π, clears all) |
+
+Readings: (1) NO model meets FDR<0.125 AND NPV>0.875 jointly at a single
+val-chosen threshold on this pool — the corner needs (FPR .066, TPR .774)
+≈ AUROC 0.945 at π=.372 (binormal); best available 0.777. (2) FDR alone
+is not comparable across models without flag volume (W2-early's lower FDR
+than W2@50 comes from a more conservative val threshold, i.e. fewer
+flags); the joint (FDR, NPV) row is the honest read. (3) Degenerate rows
+flagged: frozen EdgeBank flags nothing (FDR 0/0→0), TGAT's NPV rides on
+tiny flag volume from an inverted score. Three-zone abstention remains
+the only route to the program bar with current models. (user directive): epochs are a dial
 
 Setup: W2 recipe, `--epochs 50 --patience 50` (early stopping disabled),
 new `--save-last` flag stores the epoch-49 weights alongside the

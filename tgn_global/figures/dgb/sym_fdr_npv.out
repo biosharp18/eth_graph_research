@@ -1,0 +1,10 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+tgat: auroc 0.4000 fdr 0.6229 npv 0.8688
+tgn_hard: auroc 0.6741 fdr 0.2350 npv 0.7037
+pfpop_mrr: auroc 0.4890 fdr 0.4119 npv 0.6669
+g2_twohop_w1: auroc 0.4957 fdr 0.3942 npv 0.6717
+w2_wide_ind: auroc 0.6481 fdr 0.1932 npv 0.7036
+w2_fixed50_last: auroc 0.7774 fdr 0.3362 npv 0.7941
+edgebank_inf: auroc 0.1330 fdr 0.8852 npv 0.1134
+edgebank_inf_frozen: auroc 0.5000 fdr 0.0000 npv 0.6279
+done
