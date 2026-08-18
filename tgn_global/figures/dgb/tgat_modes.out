@@ -1,0 +1,4 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+inductive_sym 0.4022±0.0063
+test_recurring 0.4460±0.0063
+done
