@@ -64,7 +64,8 @@ def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200,
     uniq_dst = np.unique(g.dst)
     train_val_pairs = set(zip(g.src[:lo0].tolist(), g.dst[:lo0].tolist()))
     hist = set(train_val_pairs)
-    test_seen = set()
+    test_seen = set()    # span-active pairs never seen before the span
+    test_active = set()  # ALL span-active pairs so far (train-seen allowed)
 
     ns = np.empty(n_test * n_neg, np.int64)
     nd = np.empty(n_test * n_neg, np.int64)
@@ -92,7 +93,13 @@ def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200,
                         break
                 ns[olo + i], nd[olo + i] = s, d
         else:
-            pool_set = (hist if strategy == "historical" else test_seen)
+            # "test_recurring": like inductive but WITHOUT the never-in-
+            # train/val filter — any pair active earlier in the span
+            # qualifies. Isolates "is this recurring pair firing today"
+            # from the novelty question.
+            pool_set = (hist if strategy == "historical"
+                        else test_active if strategy == "test_recurring"
+                        else test_seen)
             pool = sorted(pool_set - batch_pairs)
             take = min(need, len(pool))
             chosen = ([pool[j] for j in
@@ -106,6 +113,7 @@ def dgb_negatives(g, strategy: str, seed: int, batch_size: int = 200,
                     pad[olo + i] = True
         hist |= batch_pairs
         test_seen |= {p for p in batch_pairs if p not in train_val_pairs}
+        test_active |= batch_pairs
     return ns, nd, pad
 
 
@@ -122,13 +130,24 @@ def neg_days(g, batch_size: int = 200, span=None, n_neg: int = 1):
     return out
 
 
-def per_batch_auroc(pos_sc, neg_sc, batch_size: int = 200, n_neg: int = 1):
+def per_batch_auroc(pos_sc, neg_sc, batch_size: int = 200, n_neg: int = 1,
+                    pos_mask=None):
+    """Mean of per-batch tie-aware AUROCs. pos_mask (optional bool array
+    over positives) restricts the positive side per batch — used by the
+    symmetric-inductive mode, where only positives whose pair was never
+    seen before the span count; each batch still uses ALL its negatives,
+    and batches with no kept positives are skipped."""
     vals = []
     for lo, hi in batch_bounds(len(pos_sc), batch_size):
         npos = hi - lo
-        y = np.r_[np.ones(npos), np.zeros(npos * n_neg)]
-        vals.append(auroc(y, np.r_[pos_sc[lo:hi],
-                                   neg_sc[lo * n_neg:hi * n_neg]]))
+        ps = pos_sc[lo:hi]
+        if pos_mask is not None:
+            m = pos_mask[lo:hi]
+            if not m.any():
+                continue
+            ps = ps[m]
+        y = np.r_[np.ones(len(ps)), np.zeros(npos * n_neg)]
+        vals.append(auroc(y, np.r_[ps, neg_sc[lo * n_neg:hi * n_neg]]))
     return float(np.mean(vals)), vals
 
 

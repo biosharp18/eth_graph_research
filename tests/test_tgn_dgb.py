@@ -113,6 +113,43 @@ def test_n_neg_ratio_shapes_and_padding():
     assert mean == 1.0
 
 
+def test_test_recurring_pool_allows_train_seen_pairs():
+    g = toy_graph()
+    ns, nd, pad = dgb_negatives(g, "test_recurring", seed=0, batch_size=3)
+    ts, td = g.src[g.val_end:], g.dst[g.val_end:]
+    train_val = set(zip(g.src[:g.val_end].tolist(),
+                        g.dst[:g.val_end].tolist()))
+    active = set()
+    saw_train_seen = False
+    for lo, hi in batch_bounds(len(ts), 3):
+        batch_pairs = set(zip(ts[lo:hi].tolist(), td[lo:hi].tolist()))
+        for i in range(lo, hi):
+            p = (int(ns[i]), int(nd[i]))
+            assert p not in batch_pairs
+            if not pad[i]:
+                assert p in active  # active earlier in the span
+                if p in train_val:
+                    saw_train_seen = True
+        active |= batch_pairs
+    # toy has train pairs recurring in test -> the pool must serve some
+    assert saw_train_seen
+    # pool is a superset of the inductive pool -> never MORE padding
+    _, _, pad_ind = dgb_negatives(g, "inductive", seed=0, batch_size=3)
+    assert pad.mean() <= pad_ind.mean()
+
+
+def test_per_batch_auroc_pos_mask():
+    pos = np.array([2.0, 0.5, 2.0, 0.5])
+    neg = np.array([1.0, 1.0, 1.0, 1.0])
+    mask = np.array([True, False, True, False])  # keep only the 2.0s
+    mean, vals = per_batch_auroc(pos, neg, batch_size=2, pos_mask=mask)
+    assert mean == 1.0 and len(vals) == 2
+    # a batch with no kept positives is skipped
+    mask2 = np.array([True, False, False, False])
+    mean2, vals2 = per_batch_auroc(pos, neg, batch_size=2, pos_mask=mask2)
+    assert mean2 == 1.0 and len(vals2) == 1
+
+
 def test_edgebank_frozen_memory_ignores_test_edges():
     g = toy_graph()
     ts, td = g.src[g.val_end:], g.dst[g.val_end:]
