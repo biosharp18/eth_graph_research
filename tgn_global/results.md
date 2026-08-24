@@ -315,3 +315,118 @@ Full details in `experiment_log.md`; design rationale in
 5. **G2 ranking numbers corrected** (0.3707 → 0.3689 etc.): the first
    readout caught the per-seed-flushed JSON at 3/5 seeds; deterministic
    re-run verified. Conclusion (beats recency on all four) unchanged.
+
+---
+
+# Additional test modes and the EdgeBank investigation (2026-08-16)
+
+Full chronology in `experiment_log.md`; code in `src/tgn/evaluate_dgb.py`
+(`dgb_negatives` strategies `inductive` / `historical` / `random` /
+`test_recurring`; `per_batch_auroc(pos_mask=...)`; `edgebank_scores_dgb(
+freeze_memory=...)`); runners `scripts/run_dgb_modes.py`,
+`scripts/run_sym_fdr_npv.py`; raw results `figures/dgb/modes_dgb.json`,
+`figures/dgb/tgat_modes.json`, `figures/dgb/sym_fdr_npv.json`.
+
+## Why two more modes were needed
+
+The standard inductive setting conditions only the NEGATIVES on prior
+observation ("test-only pairs already observed"). Two consequences were
+measured: (1) a memorization scorer's AUROC becomes a pure base-rate
+identity — for a binary scorer AUROC = ½ + (p − q)/2, where p/q are the
+positive/negative in-memory rates — inverted (0.295) when memory
+accumulates through test (the DGB paper's hardcoded `learn_through_time=
+True`, verified in their source) and inflated (0.704) when memory is
+frozen at train/val; (2) positives remained a MIX of old and new pairs, so
+any model could bank partial credit on the old ones without new-pair
+skill. The modes below remove each artifact in turn.
+
+## Methodology
+
+Both modes keep EVERYTHING else identical to the paper-faithful protocol:
+200-event chronological batches, history accumulating through test,
+strictly-past pools, batch-collision exclusion, 1:1 sampling before any
+masking, random padding on shortfall, per-batch mean AUROC.
+
+**`inductive_sym` (symmetric inductive).** Negatives: standard inductive
+sampling (pairs never seen before the test span, observed earlier in the
+span, not positive in the batch). Positives: restricted to test events
+whose pair was never seen before the test span (59.3% of events). Metric:
+per batch, kept positives vs ALL that batch's negatives (batches with no
+kept positives skipped). Pool prevalence 0.372. Question answered: "can
+the model tell when a genuinely new relationship is active vs dormant,
+with no help from familiar pairs on either side?"
+
+**`test_recurring`.** Negatives: pairs active earlier in the test span,
+with the never-in-train/val filter DROPPED (train-seen pairs eligible;
+pool is a superset of the inductive pool, padding 3.7% vs 6.0%).
+Positives: unchanged (all test events). Question: "among relationships
+active during test regardless of origin, which fire today?"
+
+**Controls.** Frozen-memory EdgeBank (memory stopped at train/val) is
+included as the built-in null: on `inductive_sym` every comparison is a
+tie, so it must score exactly 0.500 if the mode contains no free signal
+for memorization in either direction.
+
+**FDR / NPV procedure (on `inductive_sym`).** Per model and seed: build
+the same construction on the VALIDATION span (positives = val events whose
+pair was never seen in train; negatives = val-span inductive sampling);
+choose the single threshold maximizing Youden's J there; freeze it; on the
+test-span pools report FDR = FP/(FP+TP) and NPV = TN/(TN+FN). EdgeBank is
+evaluated at its one non-trivial rule (flag = seen). AUROC in that table
+is pooled over the masked set (within 0.005 of the per-batch mean
+everywhere).
+
+## Results (5 seeds)
+
+| model | inductive_sym AUROC | test_recurring AUROC | std inductive |
+|---|---|---|---|
+| **W2 @50 epochs** | **0.7813 ± .004** | **0.6918 ± .002** | 0.8240 |
+| TGN hard-CE | 0.6765 ± .010 | 0.6248 ± .007 | 0.6754 |
+| W2 (early stop) | 0.6519 ± .022 | 0.6166 ± .012 | 0.7298 |
+| G2 wide + two-hop | 0.5001 ± .012 | 0.5118 ± .010 | 0.5957 |
+| pfpop-mrr | 0.4955 ± .013 | 0.5005 ± .010 | 0.5496 |
+| TGAT | 0.4022 ± .006 | 0.4460 ± .006 | 0.4645 |
+| EdgeBank ∞ (accumulating) | 0.1313 | 0.2829 | 0.2946 |
+| EdgeBank ∞ (frozen, control) | **0.5000** | 0.5353 | 0.7036 |
+
+| model | AUROC (pooled) | FDR @ val-Youden | NPV @ val-Youden |
+|---|---|---|---|
+| W2 @50 epochs | 0.7774 ± .004 | 0.3362 ± .015 | 0.7941 ± .004 |
+| TGN hard-CE | 0.6741 ± .011 | 0.2350 ± .024 | 0.7037 ± .002 |
+| W2 (early stop) | 0.6481 ± .023 | 0.1932 ± .018 | 0.7036 ± .002 |
+| G2 wide + two-hop | 0.4957 ± .012 | 0.3942 ± .056 | 0.6717 ± .007 |
+| pfpop-mrr | 0.4890 ± .013 | 0.4119 ± .068 | 0.6669 ± .008 |
+| TGAT | 0.4000 ± .006 | 0.6229 | 0.8688 (tiny flag volume, inverted score) |
+| EdgeBank ∞ | 0.1330 | 0.8852 | 0.1134 |
+| EdgeBank frozen | 0.5000 | 0.000 (VACUOUS: flags nothing) | 0.6279 (= 1 − prevalence) |
+
+## Findings
+
+1. **The control behaves exactly as designed**: frozen EdgeBank = 0.5000
+   on `inductive_sym`. The accumulating variant's 0.1313 is the base-rate
+   identity again (p ≈ 0.206 test-repeat positives, q ≈ 0.940).
+2. **The symmetric mode unmasks a split the standard protocol hid.** The
+   deployment-oriented models (G2, pfpop) are at exact chance on
+   new-relationship timing; their standard-inductive 0.55–0.60 was carried
+   by seen positives. Genuine new-pair skill lives only in novelty
+   training (W2@50 0.7813) and, notably, hard-CE (0.6765). TGAT sits below
+   chance (0.40): the graded form of memorization inversion.
+3. `test_recurring` preserves the ordering at lower levels — the novelty
+   models' edge is not an artifact of the never-in-train filter.
+4. **No model meets the program bar (FDR < 0.125 AND NPV > 0.875) at a
+   single validation-chosen threshold on this pool.** The joint corner at
+   prevalence 0.372 is (FPR 0.066, TPR 0.774) ≈ AUROC 0.945 binormal; the
+   best available is 0.777. FDR alone is not comparable across models
+   without flag volume (W2-early's lower FDR reflects a more conservative
+   threshold, not more skill); read the (FDR, NPV) pair. A three-zone
+   abstention deployment on calibrated posteriors remains the route to
+   the bar; model quality then sets the auto-decided share.
+5. **EdgeBank inversion, verified on three fronts** (was previously
+   over-asserted as "intended"): frozen-memory ablation isolates the cause
+   entirely to memory accumulation; the DGB source hardcodes that
+   accumulation; the paper's own appendix (Tables 6/10) reports EdgeBank∞
+   inductive AUROC below 0.5 on 12 of 13 datasets. Whether the
+   below-chance direction was intended by the authors is unknowable from
+   the paper; that it is a reproducible consequence of their design is
+   established. Reverse-direction pairs (1.7%) and known endpoints (30.6%)
+   among inductive negatives do not register in a directed-pair memory.

@@ -155,6 +155,18 @@ eval-plumbed — for future data where individual old events might matter.)
 4. The two-term loss path (`--n-neg-hard`) was broken (hard_sampler never
    advanced) until 2026-08-14 — all pre-fix two-term/hinge verdicts are
    void, and the fixed path has NOT been re-run.
+5. Binary scorers (EdgeBank) have a closed-form AUROC = ½ + (p − q)/2 on
+   any pool: the number is pool composition, not discrimination, and its
+   sign depends on whether the memory accumulates through test (the DGB
+   code hardcodes accumulation). Always report the frozen-memory control
+   and, for new-pair claims, use `inductive_sym` where that control sits
+   at exactly 0.500 by construction.
+6. FDR/NPV are threshold- and prevalence-dependent. The project convention
+   (`scripts/run_sym_fdr_npv.py`): choose the threshold on a validation-
+   span replica of the same pool construction (Youden J), freeze, apply to
+   test, and report the (FDR, NPV) PAIR with the pool prevalence — FDR
+   alone is not comparable across models (it moves with flag volume).
+   Zero-flag or near-zero-flag rows are vacuous and must be marked.
 
 ## 8. Model cards (what to use when)
 

@@ -15,7 +15,14 @@ pair-recency campaigns and remains the reference for those).
   (fixed-50 study). The legacy "0.60 roof" was partly a protocol artifact.
 - Evaluation now has two protocols: LEGACY (frozen, internal comparisons)
   and DGB (paper-faithful `tgn.evaluate_dgb`, per-batch mean, accumulating
-  pools) — use DGB for externally comparable AU-ROC claims.
+  pools) — use DGB for externally comparable AU-ROC claims — plus two
+  additional DGB test modes: `inductive_sym` (both sides new-to-train;
+  the clean "new relationship" measure, with a frozen-EdgeBank = 0.500
+  control) and `test_recurring` (train-seen negatives allowed). FDR/NPV
+  are reported on `inductive_sym` at validation-chosen thresholds.
+  **Key finding:** the deployment champions (G2, pfpop) are at chance on
+  genuinely-new-pair timing; only novelty-trained W2@50 (0.78) and
+  hard-CE (0.68) carry that skill. See `results.md` §Additional test modes.
 
 **Reading order:**
 1. `rationale.md` — hypotheses and pre-registered plans for both campaigns.
