@@ -42,7 +42,13 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     ap.add_argument("--batch-size", type=int, default=200)
+    ap.add_argument("--model", action="append", default=[],
+                    help="NAME=DIR; when given, evaluate only these models")
+    ap.add_argument("--no-edgebank", action="store_true")
+    ap.add_argument("--k-inner", type=int, default=0)
     args = ap.parse_args()
+    models = (dict(m.split("=", 1) for m in args.model)
+              if args.model else MODELS)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     g = load_daily_graph(args.parquet)
@@ -61,8 +67,9 @@ def main():
         out = res["modes"][mode]
         negs = {s: dgb_negatives(g, strategy, s, args.batch_size)
                 for s in args.seeds}
-        for label, kw in (("inf", {}), ("tw", {}),
-                          ("inf_frozen", {"freeze_memory": True})):
+        for label, kw in ([] if args.no_edgebank else
+                          (("inf", {}), ("tw", {}),
+                           ("inf_frozen", {"freeze_memory": True}))):
             variant = "inf" if label.startswith("inf") else "tw"
             cell = out["edgebank"].setdefault(label,
                                               {"auroc": [], "pad_frac": []})
@@ -73,13 +80,14 @@ def main():
                 cell["auroc"].append(per_batch_auroc(
                     ps, nsc, args.batch_size, pos_mask=mask)[0])
                 cell["pad_frac"].append(float(pad.mean()))
-        for name, mdir in MODELS.items():
+        for name, mdir in models.items():
             cell = out["models"].setdefault(name, {"auroc": []})
             for s in args.seeds:
                 ns, nd, pad = negs[s]
                 model = build_from_checkpoint(
                     Path(mdir) / f"tgn_seed{s}.pt", edge_feat_dim=store.F,
-                    raw_feat_dim=g.edge_feat.shape[1], dim=100, device=device)
+                    raw_feat_dim=g.edge_feat.shape[1], dim=100, device=device,
+                    k_inner=args.k_inner)
                 qs = np.concatenate([ts, ns])
                 qd = np.concatenate([td, nd])
                 qt = np.concatenate([tt, tt])

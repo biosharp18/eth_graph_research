@@ -64,10 +64,12 @@ class NeighborStore:
         self.node_start = np.searchsorted(inc_node_sorted, np.arange(n_nodes), side="left")
         self.node_end = np.searchsorted(inc_node_sorted, np.arange(n_nodes), side="right")
 
-    def sample(self, nodes: np.ndarray, qdays: np.ndarray):
+    def sample(self, nodes: np.ndarray, qdays: np.ndarray, k=None):
+        # k overrides the store width for one call (inner hops of a deep
+        # model sample fewer neighbours to bound the k**depth blow-up)
         nodes = np.asarray(nodes, dtype=np.int64)
         qdays = np.asarray(qdays, dtype=np.int64)
-        B, k = len(nodes), self.k
+        B, k = len(nodes), (self.k if k is None else int(k))
 
         if len(self.keys) == 0:
             return (np.zeros((B, k), np.int64), np.zeros((B, k), np.float32),

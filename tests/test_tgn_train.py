@@ -23,3 +23,15 @@ def test_train_determinism():
     _, b = train_one(g, seed=1, device=torch.device("cpu"), epochs=1,
                      batch=100, dim=16, k=3)
     assert a == b
+
+
+def test_save_every_writes_periodic_snapshots(tmp_path):
+    import torch
+    from tests.test_tgn_negatives import bursty_graph
+    from tgn.train import train_one
+    g = bursty_graph()
+    train_one(g, seed=0, device=torch.device("cpu"), epochs=4, patience=4,
+              loss="ce", n_neg=2, dim=16, k=5, save_every=2,
+              save_dir=tmp_path)
+    assert sorted(p.name for p in tmp_path.glob("*.pt")) == [
+        "tgn_seed0_ep2.pt", "tgn_seed0_ep4.pt"]

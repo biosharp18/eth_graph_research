@@ -513,3 +513,298 @@ paired-vs-ranking frontier: converged = calibrated to the training noise
 mixture (best for AUROC benchmarks), early = ranking compromise.
 Checkpoints: `figures/w2_fixed50/` (best), `figures/w2_fixed50_last/`
 (epoch 49); eval JSONs alongside + `figures/dgb/w2_fixed50*_dgb.json`.
+
+# Campaign 3 (2026-08-24): deeper message passing on top of W2@50
+
+**Directive:** improve on W2 @ fixed 50 epochs (the converged, benchmark-
+calibrated checkpoint: DGB ind 0.8240, inductive_sym 0.7813, hist 0.8536)
+via architectural depth — more message passing between nodes before the
+link prediction. Node scai3, **GPU 2**.
+
+## 2026-08-24 — code: N-hop recursion, stacked layers, inner-hop width
+
+`src/tgn/model.py`: `n_layers` generalized from {1,2} to any N (recursive
+`_embed`; hop j uses `attn{j+1}`; (node, edge-day) dedup at every hop
+boundary, invalid slots no longer embedded); `n_stack` = extra residual
+attention layers over the SAME one-hop neighbor set (depth of processing
+without widening the receptive field); `k_inner` = neighbours per inner hop
+(bounds the k**depth blow-up; like `--k`, NOT recorded in the checkpoint —
+must be passed at eval). `build_from_checkpoint` infers hop and stack depth
+from keys. `NeighborStore.sample(k=)` per-call override. CLI flags
+`--n-layers N --n-stack S --k-inner K` on train; `--k-inner` on
+evaluate/ranking/evaluate_dgb; `run_dgb_modes.py --model NAME=DIR`.
+Tests: +6 in `tests/test_tgn_twohop.py` (3-hop reachability with a
+same-day perturbation invisible to memory and to 2-hop; no same-day/future
+leakage at 3 hops; k_inner is a no-op at 1 hop and binds at 2; stack never
+widens the field; deep train smoke; depth inference). Suite 107.
+Regression: G2 seed-0 checkpoint scores under old vs new `embed` differ by
+max 1.4e-6 on 3000 test queries (kernel-order noise, per 05 §quirks).
+
+Launched (W2 recipe `ce n5 h.1 p.4 nov.2 f23 combo`, `--epochs 50
+--patience 50 --save-last`, seeds 0 1 as separate processes, GPU 2), out
+under `figures/deep/<name>/s<seed>/`:
+- `d_hop2`: `--n-layers 2` (G2's two-hop, now at 50 epochs with novelty)
+- `d_hop3`: `--n-layers 3` (k=20 at every hop)
+- `d_stack2`: `--n-stack 2` (three attention layers deep, one-hop field)
+Comparator: W2@50 per-seed (seeds 0,1) from `w2_fixed50_last_*`. Eval via
+`scripts/eval_deep.sh`, table via `scripts/compare_deep.py`.
+
+## 2026-08-24 — d_stack2 result (2 seeds, epoch-49 checkpoint vs W2@50 same seeds)
+
+Training: ~43 s/epoch with 6 trainers sharing GPU 2. Combo-best 0.691/0.666.
+
+| metric | W2@50 (s0,s1) | d_stack2 | Δ |
+|---|---|---|---|
+| DGB random / hist / inductive | .8881 / .8516 / .8216 | .8799 / .8590 / .8161 | −.008 / +.007 / −.006 |
+| inductive_sym / test_recurring | .7787 / .6897 | .7725 / .6916 | −.006 / +.002 |
+| legacy hist / inductive | .8532 / .6778 | .8614 / .6696 | +.008 / −.008 |
+| MRR / h@1 / h@10 / h@100 | .2537 / .2101 / .3270 / .4768 | .2445 / .2028 / .3140 / .4700 | −.009 / −.007 / −.013 / −.007 |
+
+**Null.** Two extra residual attention layers over the same 20 neighbours
+move nothing beyond 2-seed noise (historical +0.007 is the only positive
+delta; ranking is uniformly slightly worse). Depth of processing without
+a wider receptive field is not the missing ingredient — consistent with the
+"attention cannot count" reading in design-notes §5.
+
+## 2026-08-24 — d_hop2 result (2 seeds, epoch-49 vs W2@50 same seeds)
+
+Training ~2 min/epoch shared. Combo-best 0.712/0.700 (W2 0.693).
+
+| metric | W2@50 (s0,s1) | d_hop2 | Δ |
+|---|---|---|---|
+| DGB random / hist / inductive | .8881 / .8516 / .8216 | .8991 / .8587 / .8060 | **+.011 / +.007 / −.016** |
+| inductive_sym / test_recurring | .7787 / .6897 | .7573 / .6792 | **−.021** / −.010 |
+| legacy hist / inductive | .8532 / .6778 | .8618 / .6703 | +.009 / −.008 |
+| MRR / h@1 / h@10 / h@100 | .2537 / .2101 / .3270 / .4768 | .2535 / .2090 / .3272 / .4815 | 0 / 0 / 0 / +.005 |
+
+**A trade, not a win.** Two-hop at 50 epochs with nov .2 lifts random and
+historical AUROC but gives back the new-pair skill that is W2@50's whole
+point (inductive_sym −0.021, ~5× W2@50's seed std). Ranking flat (G2's
+ranking gain from two-hop does not reappear under the novelty mixture —
+consistent with the G3 2-seed hint that the two gains don't stack).
+Reading: the second hop's extra capacity is spent on the training mixture
+(recurring-pair contrast), pulling calibration away from novel pairs.
+Follow-up launched: `d_hop2_nov3` = `--n-layers 2 --nov-frac 0.3
+--pop-frac 0.3` — does a stronger novelty dial redirect the gain?
+
+## 2026-08-24 — early-stop (combo-best) checkpoints: hop2 shifts the balanced frontier
+
+Same-seed comparison vs `w2_fixed50` best-criterion checkpoints (W2-early):
+
+| metric | W2-early (s0,s1; ep 11/7) | d_stack2_best (ep 5/4) | d_hop2_best (ep 6/8) |
+|---|---|---|---|
+| DGB rand / hist / ind | .9042 / .8290 / .7561 | .8846 / .8115 / .7420 | .9122 / .8410 / .7536 |
+| inductive_sym / test_rec | .6654 / .6257 (w2_wide_ind s0,s1) | .6706 / .6368 | **.6861** / .6363 |
+| MRR / h@1 / h@10 / h@100 | .3135 / .2616 / .4013 / .5406 | .3479 / .2905 / .4458 / .5696 | .3294 / .2743 / .4200 / .5586 |
+| selected val_ap / val_mrr | .843,.839 / .570,.545 | .808,.803 / .591,.553 | .839,.839 / **.605,.584** |
+
+Reading: stack2's ranking gain is the epoch dial (earlier stop, lower
+val_ap — a different point on the same frontier). hop2's is not: at the
+SAME matched val_ap it selects a checkpoint with +0.03 sampled val_mrr,
+and on test that is +0.016 MRR, +0.01 rand/hist, +0.02 inductive_sym,
+inductive flat — a frontier shift for the balanced single-scalar model.
+So two-hop helps the *balanced* W2 checkpoint on every axis and hurts the
+*converged* one on new-pair timing. Caveat: 2 seeds; W2-early has seed
+std ~0.02 on inductive metrics, so the sym gain needs 5 seeds.
+
+## 2026-08-24 — d_hop2_nov3 first numbers (2 seeds, epoch-49) and the control
+
+DGB rand / hist / ind = .8844 / .8686 / **.8558**; inductive_sym **.8263**;
+test_recurring .7178 — vs W2@50 same seeds .8881 / .8516 / .8216, .7787,
+.6897. Ranking pending. This is +0.034 inductive and +0.048 inductive_sym,
+the largest single move since the novelty mechanism itself. Attribution is
+NOT yet clean: nov .3 alone was never run at 50 epochs on wide features
+(campaign-1's nov .3 verdict was narrow features + early stop). Launched
+the control `d_hop1_nov3` = W2 recipe with `--nov-frac 0.3 --pop-frac 0.3`
+at 1 hop, same seeds/epochs. The architectural claim stands only if
+hop2_nov3 beats hop1_nov3.
+
+## 2026-08-24 — d_hop2_nov3 full table (2 seeds, epoch-49 vs W2@50 same seeds)
+
+| metric | W2@50 | d_hop2_nov3 | Δ |
+|---|---|---|---|
+| DGB random / hist / inductive | .8881 / .8516 / .8216 | .8844 / .8686 / .8558 | −.004 / **+.017** / **+.034** |
+| inductive_sym / test_recurring | .7787 / .6897 | .8263 / .7178 | **+.048** / **+.028** |
+| legacy hist / inductive | .8532 / .6778 | .8671 / .6844 | +.014 / +.007 |
+| MRR / h@1 / h@10 / h@100 | .2537 / .2101 / .3270 / .4768 | .2410 / .1997 / .3068 / .4486 | −.013 / −.010 / −.020 / −.028 |
+
+Early-stop checkpoint (ep-best): rand .8946 / hist .8466 / ind .7929,
+inductive_sym .7370 — vs W2-early .9042 / .8290 / .7561, .6654.
+Ranking cost is the usual novelty-dial price (W2@50 already pays −0.08 MRR
+vs W2-early; this adds −0.013). Attribution awaits `d_hop1_nov3`.
+
+## 2026-08-24 — d_hop3 result (2 seeds, epoch-49 vs W2@50 same seeds)
+
+~3 min/epoch shared (≈2.5 h); eval ~1 h. Combo-best 0.720/0.689.
+
+| metric | W2@50 | d_hop3 | Δ |
+|---|---|---|---|
+| DGB random / hist / inductive | .8881 / .8516 / .8216 | .8947 / .8600 / .8217 | +.007 / +.008 / .000 |
+| inductive_sym / test_recurring | .7787 / .6897 | .7803 / .6921 | +.002 / +.002 |
+| MRR / h@1 / h@10 / h@100 | .2537 / .2101 / .3270 / .4768 | .2431 / .2009 / .3106 / .4702 | −.011 / −.009 / −.016 / −.007 |
+
+Marginal: three hops keep hop2's random/historical gain without hop2's
+inductive loss, but new-pair metrics are unchanged and ranking slips
+~0.01. Not worth 6× the compute of one hop on its own.
+
+## 2026-08-24 — control `d_hop1_nov3`: the hop2_nov3 gain is the novelty dial, not the hop
+
+| metric | W2@50 | d_hop1_nov3 (1 hop) | d_hop2_nov3 (2 hops) |
+|---|---|---|---|
+| DGB random / hist / inductive | .8881 / .8516 / .8216 | .8868 / .8707 / **.8556** | .8844 / .8686 / .8558 |
+| inductive_sym / test_recurring | .7787 / .6897 | **.8284** / .7190 | .8263 / .7178 |
+| legacy hist / inductive | .8532 / .6778 | .8700 / .6833 | .8671 / .6844 |
+| MRR / h@1 / h@10 / h@100 | .2537 / .2101 / .3270 / .4768 | .2362 / .1965 / .2999 / .4509 | .2410 / .1997 / .3068 / .4486 |
+
+hop2 − hop1 at nov .3: every metric within ±0.005 (MRR +0.005 the largest).
+**Campaign-3 verdict on the architectural hypothesis: null.** Deeper
+message passing (2 hops, 3 hops, 3 stacked layers) does not improve
+W2@50 on any new-pair metric; 2-hop alone trades inductive for
+random/historical, 3-hop is a marginal no-cost +0.007 on random/hist.
+**Incidental finding (the actual improvement):** `--nov-frac 0.3
+--pop-frac 0.3` at 50 epochs on wide features = ind 0.856 / sym 0.828 /
+hist 0.871 (+0.034 / +0.050 / +0.019 over W2@50) at −0.018 MRR. The
+campaign-1 "nov .3 saturates" verdict was measured at narrow features +
+early stop; the dial keeps paying once features are wide and the model is
+trained to convergence. Promoted to 5 seeds: `d_hop1_nov3` seeds 2 3 4
+launched; 5-seed eval to follow.
+
+## 2026-08-24 — `d_hop1_nov3` at 5 seeds (epoch-49 checkpoint): confirmed record
+
+| metric | W2@50 (5s) | nov .3 @50 (5s) | Δ |
+|---|---|---|---|
+| DGB random | 0.8942 ± .004 | 0.8856 ± .007 | −.009 |
+| DGB historical | 0.8536 ± .003 | 0.8628 ± .007 | +.009 |
+| DGB inductive | 0.8240 ± .004 | **0.8571 ± .002** | **+.033** |
+| inductive_sym | 0.7813 ± .004 | **0.8285 ± .002** | **+.047** |
+| test_recurring | 0.6918 ± .002 | **0.7196 ± .002** | +.028 |
+| legacy hist / inductive | .8558 / .6789 | .8627 / .6847 | +.007 / +.006 |
+| MRR / h@1 / h@10 / h@100 | .2517 / .2082 / .3242 / .4786 | .2356 / .1953 / .3016 / .4506 | −.016 / −.013 / −.023 / −.028 |
+
+Early-stop checkpoint of the same runs (vs W2-early 5s): DGB ind 0.7805
+vs 0.7356 (+.045), hist 0.8387 vs 0.8209, inductive_sym 0.7239 (W2-early
+0.6519), MRR 0.3117 vs 0.3323 (−.021).
+Recipe: `--loss ce --n-neg 5 --hard-frac 0.1 --pop-frac 0.3 --nov-frac 0.3
+--pair-feat --pair-feat-dim 23 --select combo --epochs 50 --patience 50
+--save-last` (1 hop). Checkpoints `figures/deep/d_hop1_nov3_{last,best}/`.
+Campaign 3 closed. Session hopped scai3 → scai4 at the end (eval had
+already finished; artifacts are on NFS).
+
+# Campaign 3b (2026-08-24, user directive): train the nov .3 recipe for 200 epochs
+
+Node **scai4, GPU 0**. `--save-every 50` added to `tgn.train` (periodic
+`tgn_seed{s}_ep{N}.pt` snapshots; test in `tests/test_tgn_train.py`,
+suite 108). Launched `figures/deep/nov3_ep200/s{0..4}/`: nov .3 recipe,
+`--epochs 200 --patience 200 --save-last --save-every 50`, 5 seeds as
+separate processes. Question: is the 50-epoch record a plateau or still
+climbing? Snapshots at 50/100/150/200 give the curve from one run.
+
+## 2026-08-25 — 200-epoch result (5 seeds, snapshots every 50; scai4 GPU 0)
+
+~40 min per 50 epochs with 5 seeds sharing one A100. Snapshots evaluated
+with `scripts/eval_snapshots.sh` (DGB standard + modes); epoch-200 also
+gets legacy + ranking via `eval_deep.sh`.
+
+| checkpoint | random | hist | inductive | inductive_sym | test_rec | MRR |
+|---|---|---|---|---|---|---|
+| W2@50 (nov .2) | .8942 ± .007 | .8536 ± .003 | .8240 ± .004 | .7813 ± .004 | .6918 ± .002 | .2517 |
+| nov .3 ep 50 (run A, `d_hop1_nov3`) | .8856 ± .007 | .8628 ± .007 | .8571 ± .002 | .8285 ± .002 | .7196 ± .002 | .2356 |
+| nov .3 ep 50 (this run) | .8855 ± .003 | .8610 ± .007 | .8568 ± .004 | .8269 ± .003 | .7186 ± .004 | — |
+| ep 100 | .8775 ± .007 | .8570 ± .007 | .8611 ± .005 | .8314 ± .006 | .7238 ± .003 | — |
+| ep 150 | .8794 ± .004 | .8582 ± .004 | .8622 ± .009 | .8344 ± .014 | .7259 ± .008 | — |
+| **ep 200** | .8817 ± .007 | .8515 ± .003 | .8619 ± .006 | .8320 ± .005 | .7254 ± .005 | **.2027** |
+
+Readings:
+1. **Epoch-50 snapshot replicates run A within 0.002 on every metric** —
+   the nov .3 record is reproducible across independent launches/nodes.
+2. **Plateau by epoch 100–150.** New-pair metrics gain +0.005 (inductive
+   .857 → .862, sym .827 → .832/.834, test_rec .719 → .725) and then stop;
+   the ep150 → ep200 deltas are zero within seed std (sym std at ep150 is
+   .014, larger than the gain).
+3. **The tail is a calibration slide, not learning:** historical −0.010
+   (ep50 → ep200), random −0.004, and MRR −0.033 (.2356 → .2027).
+   Training loss keeps falling (1.18 → 1.05 → ~1.0) while matched val-AP
+   is flat at ~0.85 from epoch 50 on.
+4. Verdict: **50 epochs is the operating point** for this recipe. 100
+   buys +0.005 on the inductive metrics for −0.01 historical / ~−0.02
+   MRR; nothing past that. Checkpoints kept:
+   `figures/deep/nov3_ep200/s*/` (ep50/100/150/200 + best + last),
+   assembled dirs `nov3_ep200_ep{50,100,150}/`, `nov3_ep200_{last,best}/`.
+
+## 2026-09-04 — FDR/NPV extended to W1 and the final model (report prep)
+
+Re-ran `run_sym_fdr_npv.py` with `w1_wide_mrr` and `d_hop1_nov3_last`
+added to the registry → `figures/dgb/sym_fdr_npv_v2.json` (GPU 6, scai4).
+Same protocol: val-Youden threshold, frozen, applied to test-span
+inductive_sym (prevalence .372).
+
+| model | AUROC (pooled) | FDR | NPV |
+|---|---|---|---|
+| **nov .3@50 (`d_hop1_nov3_last`)** | **0.8253** | **0.2805** | **0.8189** |
+| W2 @50 | 0.7774 | 0.3362 | 0.7941 |
+| W1 (`w1_wide_mrr`) | 0.4847 | 0.3620 | 0.6683 |
+
+Readings: (1) W1 confirmed ≈ chance on the balanced test (0.485), closing
+the inferred-from-G2 gap in the report table. (2) The final model improves
+BOTH threshold metrics over W2@50 (FDR −0.056, NPV +0.025) — first model
+above NPV 0.8; program bar (FDR<0.125 ∧ NPV>0.875) still not met.
+
+# Campaign 4 (2026-09-14, user directive): full-softmax link loss
+
+**Question (user):** why sample 5 negatives at all — train the model to pick
+the true destination out of all 11,812 candidates directly. Expected: a
+ranking gain (it is the ranking objective) and a balanced-test loss (full
+softmax = uniform negatives, the setting that scored 0.59 inductive).
+
+**Code:** `--loss full` in `tgn.train` (`full_softmax_mask`,
+`full_softmax_ce_loss`; +3 tests in `tests/test_tgn_full_softmax.py`,
+suite 111). Per batch: embed all nodes at day T, score B × n_nodes pairs
+through the link head (wide pair features via `PairRecency.features_all`,
+cached per unique source), softmax over the whole vocabulary with the
+source itself and its other same-day destinations masked. The
+hard/pop/nov flags no longer enter the loss; they are kept so the matched
+validation negatives (selection metric) stay comparable to `d_hop1_nov3`.
+
+**Launched** scai4 GPUs 1, 2: `d_full` seeds 0, 1 as separate processes,
+`tgn_global/figures/deep/d_full/s{0,1}/` — nov .3 recipe with `--loss full`
+(no `--n-neg`): `--hard-frac 0.1 --pop-frac 0.3 --nov-frac 0.3 --pair-feat
+--pair-feat-dim 23 --select combo --epochs 50 --patience 50 --save-last`.
+16.5 GB GPU memory each. Epoch timing to follow.
+
+## 2026-09-14 — `d_full` result (2 seeds, 100 s/epoch, 16.5 GB; eval `d_full_eval.out`)
+
+Epoch time 100 s (est. was 5–15 min: the B × n_nodes link-head pass is
+cheap; `features_all` per unique source dominates but is vectorized).
+Training curve: val_mrr climbs to ~0.72–0.73 by epoch 10 and holds
+(W2/nov .3 peak ~0.58–0.60 then decay); matched val_ap ~0.71–0.73.
+
+| metric | d_full @50 (last) | d_full best-combo | nov .3 @50 (5s) | G2 |
+|---|---|---|---|---|
+| DGB random / hist / inductive | .9545 / .4566 / **.4014** | .9445 / .4661 / .4374 | .8856 / .8628 / .8571 | .98 / .84 / .60 |
+| inductive_sym / test_recurring | **.2093** / .3535 | .2417 / .3785 | .8285 / .7196 | — |
+| legacy random / hist / inductive | .9792 / .4687 / .5686 | .9730 / .4754 / .5830 | — / .8627 / .6847 | — |
+| MRR / h@1 / h@10 / h@100 | **.3935 / .3285 / .5111 / .6567** | .3931 / .3275 / .5113 / .6549 | .2356 / .1953 / .3016 / .4506 | .3689 / .3059 / .4787 / .6011 |
+| ranking, unseen stratum: MRR / h@100 | .170 / .426 | — | .046 / .250 | .161 / .360 |
+
+Readings:
+1. **New deployment-ranking record on all four metrics**, +0.025 MRR /
+   +0.023 h@1 / +0.032 h@10 / +0.056 h@100 over G2 (two-hop), at one hop
+   and no early-stop sensitivity (last ≈ best). Beats recency on all four
+   (recency .354/.278/.473/.527). Unseen-stratum h@100 .43 vs G2 .36.
+2. **Classification collapses; balanced test far below chance.** Full
+   softmax = uniform negatives: a previously-seen pair is almost never a
+   negative, so the model learns "known pair ⇒ high" and never "known but
+   quiet today ⇒ low". inductive_sym .21 is the EdgeBank inversion
+   reproduced by a trained model (positives that are unseen score below
+   negatives that are recently-emerged pairs). Historical .46, DGB
+   inductive .40.
+3. The two losses sit at opposite ends of one frontier: sampled mixture
+   (nov .3) buys balanced-test skill at −0.16 MRR; full softmax buys
+   ranking at −0.62 inductive_sym. A single scalar cannot hold both —
+   direct evidence for the two-head plan (full-softmax head for "who
+   next", novelty-mixture head for "is this pair live").
+4. Note the legacy-protocol numbers (.979/.469/.569) are NOT the
+   externally comparable ones; DGB is .9545/.4566/.4014.
+
+Checkpoints `figures/deep/d_full_{last,best}/`. Seeds 2–4 not run (the
+verdict is not seed-limited: seed spread ≤ 0.02 on every metric).

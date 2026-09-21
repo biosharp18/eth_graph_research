@@ -199,6 +199,8 @@ def main():
     ap_.add_argument("--k", type=int, default=20)
     ap_.add_argument("--nbr-mode", choices=["recent", "strat"],
                      default="recent")
+    ap_.add_argument("--k-inner", type=int, default=0,
+                     help="must match training (not in the checkpoint)")
     ap_.add_argument("--dim", type=int, default=100)
     ap_.add_argument("--edgebank", action="store_true",
                      help="also report EdgeBank inf/tw under this protocol")

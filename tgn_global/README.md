@@ -6,7 +6,20 @@ graph, plus the DGB evaluation-protocol correction. Sequel to
 `../tgn_improvement/` (which documents the baseline, loss-redesign, and
 pair-recency campaigns and remains the reference for those).
 
-**State of the world (2026-08-16):**
+**State of the world (2026-09-14):**
+- **Campaign 4: `--loss full` (softmax over all 11,812 candidates) = best
+  ranker ever (MRR 0.394, h@1 0.329, h@10 0.511, h@100 0.657; beats G2
+  and recency on all four) and worst classifier ever (inductive_sym 0.21,
+  below chance). Single scalar cannot hold both → two-head objective is
+  the next lever. See `results.md` §Campaign 4.
+- **Campaign 3 (deeper message passing on W2@50): architectural null.**
+  `--n-layers N` / `--n-stack S` / `--k-inner K` generalized in
+  `src/tgn/model.py`; 2-hop, 3-hop and stacked layers do not improve the
+  converged W2 on new-pair metrics. The same-mixture control found the
+  real lever: **nov .3 at 50 epochs on wide features** — DGB inductive
+  **0.857 ± .002, inductive_sym 0.829 ± .002, hist 0.863** (5 seeds,
+  `figures/deep/d_hop1_nov3_last`), at −0.016 MRR vs W2@50. See
+  `results.md` §Campaign 3.
 - **Recency heuristic beaten on all four deployment metrics** (5 seeds):
   G2 (wide features + two-hop) MRR 0.3689, h@1 0.3059, h@10 0.4787,
   h@100 0.6011 vs recency 0.3540/0.2777/0.4734/0.5266.

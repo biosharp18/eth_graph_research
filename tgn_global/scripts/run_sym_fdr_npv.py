@@ -30,6 +30,8 @@ MODELS = {
     "g2_twohop_w1": "tgn_global/figures/g2_twohop_w1",
     "w2_wide_ind": "tgn_global/figures/w2_wide_ind",
     "w2_fixed50_last": "tgn_global/figures/w2_fixed50_last",
+    "w1_wide_mrr": "tgn_global/figures/w1_wide_mrr",
+    "d_hop1_nov3_last": "tgn_global/figures/deep/d_hop1_nov3_last",
 }
 
 

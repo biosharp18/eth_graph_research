@@ -167,6 +167,34 @@ def softmax_ce_loss(pos_logit, neg_logit):
     return (torch.logsumexp(logits, dim=1) - pos_logit).mean()
 
 
+def full_softmax_mask(s_arr, d_arr, pos_today, n_nodes: int) -> np.ndarray:
+    """(B, n_nodes) bool: candidates that must NOT compete with query i —
+    the source itself and the source's OTHER positives of the same day
+    (the sampler's today-positive rejection, applied to the full vocabulary).
+    The true destination d_arr[i] is never masked."""
+    B = len(s_arr)
+    m = np.zeros((B, n_nodes), bool)
+    m[np.arange(B), np.asarray(s_arr)] = True
+    by_src = {}
+    for s, d in pos_today:
+        by_src.setdefault(s, []).append(d)
+    for i, (s, d) in enumerate(zip(np.asarray(s_arr).tolist(),
+                                   np.asarray(d_arr).tolist())):
+        for c in by_src.get(s, ()):
+            if c != d:
+                m[i, c] = True
+    return m
+
+
+def full_softmax_ce_loss(logits, d_idx, invalid):
+    """Cross-entropy of each positive against EVERY candidate destination:
+    logits (B, n_nodes), d_idx (B,) true destinations, invalid (B, n_nodes)
+    bool mask of candidates excluded from the partition function."""
+    pos = logits.gather(1, d_idx.unsqueeze(1)).squeeze(1)
+    masked = logits.masked_fill(invalid, float("-inf"))
+    return (torch.logsumexp(masked, dim=1) - pos).mean()
+
+
 def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               batch=200, lam=1.0, lr=1e-4, dim=100, k=20,
               train_metric_sample=3000, log_every=0,
@@ -176,7 +204,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
               val_mrr_cands=100, in_batch=False, pop_frac=0.0,
               pair_feat_dim=FEAT_DIM, pop_window=0, head="mlp",
               nov_frac=0.0, nov_window=30, n_layers=1, nbr_mode="recent",
-              keep_last=False):
+              keep_last=False, n_stack=0, k_inner=0, save_every=0,
+              save_dir=None):
     """n_neg_hard > 0 enables the two-term ranking loss: CE against n_neg
     uniform negatives plus beta_hard * CE against n_neg_hard all-hard
     negatives (src_frac splits hard between same-source partners and global
@@ -203,7 +232,8 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
     store = NeighborStore(g.src, g.dst, g.day, g.edge_feat, g.n_nodes, k=k,
                           mode=nbr_mode)
     model = TGN(edge_feat_dim=store.F, raw_feat_dim=g.edge_feat.shape[1],
-                dim=dim, head=head, n_layers=n_layers,
+                dim=dim, head=head, n_layers=n_layers, n_stack=n_stack,
+                k_inner=k_inner,
                 pair_feat_dim=pair_feat_dim if pair_feat else 0).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     pos_by_day = _pos_pairs_by_day(g)
@@ -293,12 +323,13 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                 bhi = min(blo + batch, dhi)
                 s, d = g.src[blo:bhi], g.dst[blo:bhi]
                 B = bhi - blo
-                ns, nds = sampler.sample(s, d, int(T), n_neg=n_neg)
-                if n_neg_hard > 0:
-                    hs, hds = hard_sampler.sample(s, d, int(T),
-                                                  n_neg=n_neg_hard)
-                    ns = np.concatenate([ns, hs], axis=1)
-                    nds = np.concatenate([nds, hds], axis=1)
+                if loss != "full":
+                    ns, nds = sampler.sample(s, d, int(T), n_neg=n_neg)
+                    if n_neg_hard > 0:
+                        hs, hds = hard_sampler.sample(s, d, int(T),
+                                                      n_neg=n_neg_hard)
+                        ns = np.concatenate([ns, hs], axis=1)
+                        nds = np.concatenate([nds, hds], axis=1)
                 if pending is not None:
                     plo, phi, pday = pending
                     mem_eff, _ = model.apply_messages(
@@ -307,61 +338,90 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                 else:
                     mem_eff = mem
                 opt.zero_grad()
-                # embed each unique node once (all queries share day T)
-                K = ns.shape[1]  # n_neg (+ n_neg_hard in two-term mode)
-                nodes = np.concatenate([s, d, ns.ravel(), nds.ravel()])
-                uniq, inv = np.unique(nodes, return_inverse=True)
-                Z = model.embed(uniq, np.full(len(uniq), int(T)), mem_eff,
-                                store, device)[inv]
-                zs, zd = Z[:B], Z[B:2 * B]
-                zns = Z[2 * B:2 * B + B * K]
-                znd = Z[2 * B + B * K:]
-                pf_p = pf_n = None
-                if rec is not None:
-                    pf_p = torch.from_numpy(
-                        rec.features(s, d, int(T))).to(device)
-                    pf_n = torch.from_numpy(
-                        rec.features(ns.ravel(), nds.ravel(),
-                                     int(T))).to(device)
-                logit_p = model.link_logit(zs, zd, pf_p)
-                amt_p = model.amt_head(
-                    torch.cat([zs, zd], dim=-1)).squeeze(-1)
-                logit_n = model.link_logit(zns, znd, pf_n).view(B, K)
-                if n_neg_hard > 0 and hard_hinge > 0:
-                    link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
-                                 + beta_hard * F.relu(
-                                     hard_hinge - (logit_p.unsqueeze(1)
-                                                   - logit_n[:, n_neg:])).mean())
-                elif n_neg_hard > 0:
-                    link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
-                                 + beta_hard * softmax_ce_loss(
-                                     logit_p, logit_n[:, n_neg:]))
-                elif loss == "ce" and in_batch:
-                    zsr = zs.unsqueeze(1).expand(B, B, -1).reshape(B * B, -1)
-                    zdr = zd.unsqueeze(0).expand(B, B, -1).reshape(B * B, -1)
-                    ib_f = None
+                if loss == "full":
+                    # every node is a candidate: embed the whole vocabulary
+                    # once at day T, score B x n_nodes pairs, softmax over
+                    # all of them (self + other same-day positives masked)
+                    all_nodes = np.arange(g.n_nodes)
+                    Z_all = model.embed(all_nodes, np.full(g.n_nodes, int(T)),
+                                        mem_eff, store, device)
+                    zs, zd = Z_all[s], Z_all[d]
+                    n = g.n_nodes
+                    zs_rep = zs.unsqueeze(1).expand(B, n, -1).reshape(B * n, -1)
+                    zc_rep = Z_all.unsqueeze(0).expand(B, n, -1).reshape(B * n, -1)
+                    pf_all = None
                     if rec is not None:
-                        ib_f = torch.from_numpy(
-                            rec.features_cross(s, d, int(T))).to(device)
-                        ib_f = ib_f.reshape(B * B, -1)
-                    ib = model.link_logit(zsr, zdr, ib_f).view(B, B)
-                    pos_t = pos_by_day.get(int(T), set())
-                    invalid = d[None, :] == d[:, None]  # own/duplicate dst
-                    for i_, s_ in enumerate(s.tolist()):
-                        for j_, d_ in enumerate(d.tolist()):
-                            if (s_, d_) in pos_t:
-                                invalid[i_, j_] = True
-                    ib = ib.masked_fill(
-                        torch.from_numpy(invalid).to(device), float("-inf"))
-                    logits = torch.cat([logit_p.unsqueeze(1), logit_n, ib], 1)
-                    link_loss = (torch.logsumexp(logits, 1) - logit_p).mean()
-                elif loss == "ce":
-                    link_loss = softmax_ce_loss(logit_p, logit_n)
+                        cache = {}
+                        rows = []
+                        for s_ in s.tolist():
+                            if s_ not in cache:
+                                cache[s_] = rec.features_all(s_, int(T))
+                            rows.append(cache[s_])
+                        pf_all = torch.from_numpy(
+                            np.stack(rows).reshape(B * n, -1)).to(device)
+                    logits_all = model.link_logit(zs_rep, zc_rep, pf_all).view(B, n)
+                    invalid = torch.from_numpy(full_softmax_mask(
+                        s, d, pos_by_day.get(int(T), set()), n)).to(device)
+                    link_loss = full_softmax_ce_loss(
+                        logits_all, torch.from_numpy(d).to(device), invalid)
+                    amt_p = model.amt_head(
+                        torch.cat([zs, zd], dim=-1)).squeeze(-1)
                 else:
-                    link_loss = (F.binary_cross_entropy_with_logits(
-                                     logit_p, torch.ones_like(logit_p))
-                                 + F.binary_cross_entropy_with_logits(
-                                     logit_n, torch.zeros_like(logit_n))) / 2
+                    # embed each unique node once (all queries share day T)
+                    K = ns.shape[1]  # n_neg (+ n_neg_hard in two-term mode)
+                    nodes = np.concatenate([s, d, ns.ravel(), nds.ravel()])
+                    uniq, inv = np.unique(nodes, return_inverse=True)
+                    Z = model.embed(uniq, np.full(len(uniq), int(T)), mem_eff,
+                                    store, device)[inv]
+                    zs, zd = Z[:B], Z[B:2 * B]
+                    zns = Z[2 * B:2 * B + B * K]
+                    znd = Z[2 * B + B * K:]
+                    pf_p = pf_n = None
+                    if rec is not None:
+                        pf_p = torch.from_numpy(
+                            rec.features(s, d, int(T))).to(device)
+                        pf_n = torch.from_numpy(
+                            rec.features(ns.ravel(), nds.ravel(),
+                                         int(T))).to(device)
+                    logit_p = model.link_logit(zs, zd, pf_p)
+                    amt_p = model.amt_head(
+                        torch.cat([zs, zd], dim=-1)).squeeze(-1)
+                    logit_n = model.link_logit(zns, znd, pf_n).view(B, K)
+                    if n_neg_hard > 0 and hard_hinge > 0:
+                        link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
+                                     + beta_hard * F.relu(
+                                         hard_hinge - (logit_p.unsqueeze(1)
+                                                       - logit_n[:, n_neg:])).mean())
+                    elif n_neg_hard > 0:
+                        link_loss = (softmax_ce_loss(logit_p, logit_n[:, :n_neg])
+                                     + beta_hard * softmax_ce_loss(
+                                         logit_p, logit_n[:, n_neg:]))
+                    elif loss == "ce" and in_batch:
+                        zsr = zs.unsqueeze(1).expand(B, B, -1).reshape(B * B, -1)
+                        zdr = zd.unsqueeze(0).expand(B, B, -1).reshape(B * B, -1)
+                        ib_f = None
+                        if rec is not None:
+                            ib_f = torch.from_numpy(
+                                rec.features_cross(s, d, int(T))).to(device)
+                            ib_f = ib_f.reshape(B * B, -1)
+                        ib = model.link_logit(zsr, zdr, ib_f).view(B, B)
+                        pos_t = pos_by_day.get(int(T), set())
+                        invalid = d[None, :] == d[:, None]  # own/duplicate dst
+                        for i_, s_ in enumerate(s.tolist()):
+                            for j_, d_ in enumerate(d.tolist()):
+                                if (s_, d_) in pos_t:
+                                    invalid[i_, j_] = True
+                        ib = ib.masked_fill(
+                            torch.from_numpy(invalid).to(device), float("-inf"))
+                        logits = torch.cat([logit_p.unsqueeze(1), logit_n, ib], 1)
+                        link_loss = (torch.logsumexp(logits, 1) - logit_p).mean()
+                    elif loss == "ce":
+                        link_loss = softmax_ce_loss(logit_p, logit_n)
+                    else:
+                        link_loss = (F.binary_cross_entropy_with_logits(
+                                         logit_p, torch.ones_like(logit_p))
+                                     + F.binary_cross_entropy_with_logits(
+                                         logit_n, torch.zeros_like(logit_n))) / 2
                 y_amt = torch.from_numpy(g.y_amt[blo:bhi]).to(device)
                 huber = lam * F.huber_loss(amt_p, y_amt, delta=1.0)
                 (link_loss + huber).backward()
@@ -408,6 +468,11 @@ def train_one(g: DailyGraph, seed: int, device, epochs=50, patience=5,
                   f"val_ap {val_ap:.4f}"
                   + (f" val_mrr {val_mrr:.4f}" if val_mrr is not None else ""),
                   flush=True)
+        if save_every and save_dir is not None \
+                and (epoch + 1) % save_every == 0:
+            # periodic snapshots for long fixed-epoch runs (epoch dial study)
+            torch.save(model.state_dict(),
+                       Path(save_dir) / f"tgn_seed{seed}_ep{epoch + 1}.pt")
         if sel_metric > best_ap:
             best_ap, best_state, bad = (sel_metric,
                                         copy.deepcopy(model.state_dict()), 0)
@@ -439,7 +504,9 @@ def main():
     ap_.add_argument("--lr", type=float, default=1e-4)
     ap_.add_argument("--lam", type=float, default=1.0)
     ap_.add_argument("--patience", type=int, default=5)
-    ap_.add_argument("--loss", choices=["bce", "ce"], default="bce")
+    ap_.add_argument("--loss", choices=["bce", "ce", "full"], default="bce",
+                 help="full = softmax over ALL nodes as candidates "
+                      "(no sampled negatives in the loss)")
     ap_.add_argument("--n-neg", type=int, default=1)
     ap_.add_argument("--hard-frac", type=float, default=0.0)
     ap_.add_argument("--src-frac", type=float, default=0.5)
@@ -454,12 +521,21 @@ def main():
     ap_.add_argument("--pop-window", type=int, default=0)
     ap_.add_argument("--nov-frac", type=float, default=0.0)
     ap_.add_argument("--nov-window", type=int, default=30)
-    ap_.add_argument("--n-layers", type=int, default=1, choices=[1, 2])
+    ap_.add_argument("--n-layers", type=int, default=1,
+                     help="attention hops (1 = memory only at the leaves)")
+    ap_.add_argument("--n-stack", type=int, default=0,
+                     help="extra residual attention layers over the same "
+                          "one-hop neighbors (depth without wider field)")
+    ap_.add_argument("--k-inner", type=int, default=0,
+                     help="neighbors per inner hop (0 = --k); NOT recorded "
+                          "in the checkpoint, pass at eval too")
     ap_.add_argument("--nbr-mode", choices=["recent", "strat"],
                      default="recent")
     ap_.add_argument("--save-last", action="store_true",
                      help="also save the final-epoch weights as "
                           "tgn_seed{seed}_last.pt (for fixed-epoch runs)")
+    ap_.add_argument("--save-every", type=int, default=0,
+                     help="also save tgn_seed{seed}_ep{N}.pt every N epochs")
     ap_.add_argument("--pair-feat-dim", type=int, default=FEAT_DIM,
                      choices=[FEAT_DIM, FEAT_DIM_BUCKETS, FEAT_DIM_GLOBAL,
                               FEAT_DIM_GLOBAL_BUCKETS, FEAT_DIM_WIDE])
@@ -489,7 +565,9 @@ def main():
                                 nov_window=args.nov_window,
                                 n_layers=args.n_layers,
                                 nbr_mode=args.nbr_mode,
-                                keep_last=args.save_last)
+                                keep_last=args.save_last,
+                                n_stack=args.n_stack, k_inner=args.k_inner,
+                                save_every=args.save_every, save_dir=out)
         torch.save(model.state_dict(), out / f"tgn_seed{seed}.pt")
         if args.save_last:
             torch.save(info.pop("_last_state"),

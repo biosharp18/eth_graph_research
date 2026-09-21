@@ -175,6 +175,7 @@ eval-plumbed — for future data where individual old events might matter.)
 | **G2** | h.1 p.5 f23 mrr-select, 2-hop | deployment ranking (MRR 0.3689, beats recency on all four) | inductive AU-ROC claims (0.596 DGB) |
 | **W2 (early stop)** | h.1 p.4 nov.2 f23 combo | balanced single scalar (0.90/0.82/0.73 DGB) | max-anything |
 | **W2 @50 (final epoch)** | same, no early stop | benchmark AU-ROC (0.894/0.854/0.824 DGB) | ranking (MRR 0.252) |
+| **nov.3 @50 (final epoch)** | h.1 p.3 nov.3 f23, 50 epochs, 1-hop | benchmark AU-ROC record (0.886/0.863/0.857 DGB; inductive_sym 0.829) | ranking (MRR 0.236) |
 | W3 | h.1 p.45 nov.1 f23 combo | balanced with ranking parity (MRR 0.3525 ≈ recency) | — |
 | W1 | h.1 p.5 f23 mrr-select, 1-hop | ablation reference for G2's 2-hop delta | — |
 | hard-CE (legacy) | ce n5 h.5, no features | legacy-historical ceiling (0.899) | anything deployment-shaped (MRR 0.046) |
@@ -184,3 +185,15 @@ Open problems inherited by whoever picks this up: two-calibration heads
 holding hist 0.88+ AND MRR 0.37 in one artifact, now testable since the
 two-term bug fix); the unseen-inductive stratum; G3 (two-hop + novelty)
 at 5 seeds if a single all-rounder is wanted.
+
+## 9. Addendum (2026-08-24, campaign 3): depth on top of W2@50
+
+Tested on the converged W2 checkpoint (see `results.md` §Campaign 3):
+stacked layers (depth, same field) null; 2-hop trades inductive for
+random/historical; 3-hop marginal. The generalized `--n-layers N`,
+`--n-stack S`, `--k-inner K` machinery stays in the codebase. The one
+lever that moved the converged model was `--nov-frac 0.3` (§3's dial,
+re-measured at wide features + 50 epochs: +0.034 inductive, +0.050
+inductive_sym, −0.018 MRR). Update to §3: the "saturates at nov ≥ .2"
+reading was conditional on narrow features and early stopping — the same
+kind of conditional null as §4's two-hop story.

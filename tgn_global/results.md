@@ -391,7 +391,9 @@ everywhere).
 
 | model | AUROC (pooled) | FDR @ val-Youden | NPV @ val-Youden |
 |---|---|---|---|
+| **nov .3 @50 (final)** | **0.8253 ± .002** | **0.2805 ± .011** | **0.8189 ± .003** |
 | W2 @50 epochs | 0.7774 ± .004 | 0.3362 ± .015 | 0.7941 ± .004 |
+| W1 wide-mrr | 0.4847 ± .017 | 0.3620 ± .026 | 0.6683 ± .008 |
 | TGN hard-CE | 0.6741 ± .011 | 0.2350 ± .024 | 0.7037 ± .002 |
 | W2 (early stop) | 0.6481 ± .023 | 0.1932 ± .018 | 0.7036 ± .002 |
 | G2 wide + two-hop | 0.4957 ± .012 | 0.3942 ± .056 | 0.6717 ± .007 |
@@ -430,3 +432,157 @@ everywhere).
    the paper; that it is a reproducible consequence of their design is
    established. Reverse-direction pairs (1.7%) and known endpoints (30.6%)
    among inductive negatives do not register in a directed-pair memory.
+
+---
+
+# Campaign 3 (2026-08-24): deeper message passing on top of W2@50
+
+**Directive:** improve W2 @ fixed 50 epochs (the converged checkpoint:
+DGB inductive 0.824, inductive_sym 0.781, hist 0.854) through
+architectural depth — more message passing between nodes before the link
+prediction. **Outcome: the architectural hypothesis is null; the campaign's
+control run found a real, non-architectural improvement instead.**
+
+## What was built (`src/tgn/model.py`, all node-wise so every eval tool works unchanged)
+
+- `--n-layers N` for any N (was {1,2}): recursive hop embedding, TGAT
+  convention (neighbour embedded at its edge day), (node, day) dedup at
+  every hop boundary.
+- `--n-stack S`: S extra residual attention layers over the SAME one-hop
+  neighbour set — depth of processing without a wider receptive field, so
+  "deeper" and "wider" are separable.
+- `--k-inner K`: neighbours per inner hop (bounds k**depth; not recorded in
+  checkpoints — pass at eval, like `--k`).
+- Checkpoint depth inference; `run_dgb_modes.py --model NAME=DIR`;
+  `scripts/eval_deep.sh`, `scripts/compare_deep.py`. +6 property tests
+  (3-hop reachability with a memory-invisible perturbation, no leakage at
+  3 hops, stack never widens the field, ...). Suite 107.
+
+## Results (2 seeds each, same seeds as the W2@50 reference; epoch-49 checkpoints)
+
+| model | DGB rand | DGB hist | DGB ind | ind_sym | test_rec | MRR | h@10 |
+|---|---|---|---|---|---|---|---|
+| W2@50 (s0,s1) | .8881 | .8516 | .8216 | .7787 | .6897 | .2537 | .3270 |
+| + 2 stacked layers (`d_stack2`) | .8799 | .8590 | .8161 | .7725 | .6916 | .2445 | .3140 |
+| + 2-hop (`d_hop2`) | .8991 | .8587 | .8060 | .7573 | .6792 | .2535 | .3272 |
+| + 3-hop (`d_hop3`) | .8947 | .8600 | .8217 | .7803 | .6921 | .2431 | .3106 |
+| 2-hop + nov .3 (`d_hop2_nov3`) | .8844 | .8686 | .8558 | .8263 | .7178 | .2410 | .3068 |
+| **1-hop + nov .3 (`d_hop1_nov3`, control)** | .8868 | **.8707** | **.8556** | **.8284** | **.7190** | .2362 | .2999 |
+| 1-hop + nov .3, **5 seeds** | .8856 | .8628 | **.8571** | **.8285** | **.7196** | .2356 | .3016 |
+
+(W2@50 5-seed reference: .8942 / .8536 / .8240 / .7813 / .6918 / .2517.)
+
+## Findings
+
+1. **Depth without width is null** (stack2): three attention layers over
+   the same 20 neighbours change nothing beyond noise. Consistent with
+   "attention cannot count" (design-notes §5).
+2. **Two hops trade, three hops barely help.** At nov .2 the second hop
+   lifts random/historical (+0.011/+0.007) and gives back new-pair skill
+   (inductive −0.016, inductive_sym −0.021, ≈5× W2@50's seed std); the
+   extra capacity is spent on the recurring-pair contrast in the training
+   mixture. Three hops keep the random/historical gain without the
+   inductive loss but move nothing on new pairs and cost ~0.01 ranking —
+   at 6× the compute. G2's ranking gain from two-hop does not reappear
+   under the novelty mixture (as the campaign-2 G3 probe hinted).
+3. **The hop2_nov3 jump is entirely the novelty dial.** The 1-hop control
+   at the same mixture matches it within ±0.005 on every metric.
+4. **Incidental record: `--nov-frac 0.3 --pop-frac 0.3` trained to 50
+   epochs on wide features** = DGB inductive 0.856, inductive_sym 0.828,
+   historical 0.871 (+0.034 / +0.050 / +0.019 over W2@50) at −0.018 MRR.
+   Campaign 1 rejected nov .3 as "saturating" — measured at narrow
+   features and early stop; with wide features and convergence the dial
+   keeps paying. **Confirmed at 5 seeds:** DGB inductive 0.8571 ± .002,
+   inductive_sym 0.8285 ± .002, historical 0.8628 ± .007, test_recurring
+   0.7196 ± .002, random 0.8856 ± .007, MRR 0.2356 ± .006 (vs W2@50
+   0.8240 / 0.7813 / 0.8536 / 0.6918 / 0.8942 / 0.2517). Seed std on the
+   inductive metrics collapses to ±0.002. Checkpoints
+   `figures/deep/d_hop1_nov3_{last,best}/`.
+5. **Balanced-checkpoint side note:** at early stop, two-hop selects a
+   checkpoint with the same matched val-AP but +0.03 sampled val-MRR, and
+   on test that is +0.016 MRR, +0.02 inductive_sym, +0.01 rand/hist over
+   W2-early (2 seeds). If a single balanced artifact is wanted, 2-hop is
+   the better early-stop model; it is not better for the converged one.
+
+## Follow-up: 200 epochs (2026-08-25, user directive)
+
+Same recipe, 5 seeds, snapshots every 50 (`figures/deep/nov3_ep200/`):
+
+| epoch | random | hist | inductive | inductive_sym | test_rec | MRR |
+|---|---|---|---|---|---|---|
+| 50 | .8855 | .8610 | .8568 | .8269 | .7186 | .2356 (run A) |
+| 100 | .8775 | .8570 | .8611 | .8314 | .7238 | — |
+| 150 | .8794 | .8582 | .8622 | .8344 | .7259 | — |
+| 200 | .8817 | .8515 | .8619 | .8320 | .7254 | .2027 |
+
+The epoch-50 snapshot reproduces the record to ±0.002. Beyond it the
+new-pair metrics gain +0.005 by epoch 100 and plateau (ep150 → ep200 is
+zero within seed std), while historical −0.010 and MRR −0.033 slide:
+training loss keeps falling with matched val-AP flat at ~0.85. **50 epochs
+is the operating point; the record is a plateau, not a truncated climb.**
+
+## Method lesson
+
+An architecture change on top of a calibrated single-scalar scorer mostly
+re-spends capacity on the training noise distribution; what the extra hops
+"see" is not what the inductive metrics reward. Every architectural gain
+here needed a same-mixture control before it could be attributed — the
+control is what turned a false "+0.05 from depth" into a true "+0.05 from
+the negative mixture".
+
+## Artifacts
+
+`tgn_global/figures/deep/<name>/s<seed>/` (per-seed checkpoints + logs),
+`<name>_last/` and `<name>_best/` (assembled dirs with `dgb.json`,
+`modes.json`, `results.json`, `ranking.json`), `<name>_eval*.out`.
+
+
+---
+
+# Campaign 4 (2026-09-14): full-softmax link loss (`--loss full`)
+
+**Directive (user):** train the model to pick the true destination out of
+all 11,812 candidates directly instead of against 5 sampled negatives,
+keeping every other improvement (wide features, 50 fixed epochs, 1 hop).
+
+**What was built** (`src/tgn/train.py`, `tests/test_tgn_full_softmax.py`,
+suite 111): per batch, embed the whole vocabulary at day T, score
+B × n_nodes pairs through the link head (wide pair features via
+`PairRecency.features_all`, cached per unique source), cross-entropy over
+all candidates with the source itself and its other same-day destinations
+masked. 100 s/epoch, 16.5 GB on one A100 (cheap enough to use routinely).
+
+## Result (2 seeds, epoch-49 checkpoint; `figures/deep/d_full_last/`)
+
+| model | DGB rand | DGB hist | DGB ind | ind_sym | test_rec | MRR | h@1 | h@10 | h@100 |
+|---|---|---|---|---|---|---|---|---|---|
+| **full softmax @50** | .9545 | .4566 | .4014 | **.2093** | .3535 | **.3935** | **.3285** | **.5111** | **.6567** |
+| nov .3 @50 (5s) | .8856 | .8628 | .8571 | .8285 | .7196 | .2356 | .1953 | .3016 | .4506 |
+| G2 (5s) | .98 | .84 | .60 | — | — | .3689 | .3059 | .4787 | .6011 |
+| recency heuristic | — | — | — | — | — | .3540 | .2777 | .4734 | .5266 |
+
+## Findings
+
+1. **Best ranker to date**: beats G2 on all four ranking metrics (+0.025
+   MRR, +0.056 h@100) and recency on all four, at one hop, with no
+   early-stop sensitivity (best-combo checkpoint within 0.002 of last).
+2. **Worst classifier to date**: balanced test 0.21 (below chance),
+   historical 0.46, DGB inductive 0.40. Full softmax is uniform-negative
+   training taken to the limit; a previously-seen pair is essentially never
+   a negative, so "known pair" becomes the score. This is the EdgeBank
+   inversion reproduced by a trained model.
+3. **Method reading**: the sampled-mixture loss and the full softmax are
+   the two ends of one frontier. Nothing in the single-scalar family holds
+   both ranking and balanced-test skill — the argument for the two-head
+   objective in the plan (full-softmax head for "who next", novelty-mixture
+   head for "is this pair live").
+
+## Reproduction
+
+```
+python -m tgn.train --parquet $P --seeds 0 --out figures/deep/d_full/s0 \
+  --loss full --hard-frac 0.1 --pop-frac 0.3 --nov-frac 0.3 --pair-feat \
+  --pair-feat-dim 23 --select combo --epochs 50 --patience 50 --save-last
+bash tgn_global/scripts/eval_deep.sh d_full "0 1"
+```
+(The mixture flags only shape the validation negatives in full mode.)
