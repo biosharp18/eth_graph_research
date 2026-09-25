@@ -1,0 +1,55 @@
+[W824 12:54:28.529052259 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 262144000 bytes (free: 118095872, total: 42405855232).
+[W824 12:54:50.297707060 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 333447168 bytes (free: 227147776, total: 42405855232).
+[W824 12:55:06.634659345 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 375390208 bytes (free: 153747456, total: 42405855232).
+[W824 12:55:19.440381495 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 400556032 bytes (free: 4849664, total: 42405855232).
+[seed 1] epoch 0 loss 1.9028 val_ap 0.8054 val_mrr 0.5476
+[seed 1] epoch 1 loss 1.6239 val_ap 0.8094 val_mrr 0.5621
+[seed 1] epoch 2 loss 1.5215 val_ap 0.8126 val_mrr 0.5714
+[seed 1] epoch 3 loss 1.4687 val_ap 0.8159 val_mrr 0.5671
+[seed 1] epoch 4 loss 1.4312 val_ap 0.8200 val_mrr 0.5656
+[seed 1] epoch 5 loss 1.4077 val_ap 0.8254 val_mrr 0.5716
+[seed 1] epoch 6 loss 1.3756 val_ap 0.8277 val_mrr 0.5632
+[seed 1] epoch 7 loss 1.3679 val_ap 0.8329 val_mrr 0.5683
+[seed 1] epoch 8 loss 1.3474 val_ap 0.8389 val_mrr 0.5630
+[seed 1] epoch 9 loss 1.3211 val_ap 0.8428 val_mrr 0.5501
+[seed 1] epoch 10 loss 1.3045 val_ap 0.8480 val_mrr 0.5589
+[seed 1] epoch 11 loss 1.2888 val_ap 0.8490 val_mrr 0.5429
+[seed 1] epoch 12 loss 1.2763 val_ap 0.8508 val_mrr 0.5428
+[seed 1] epoch 13 loss 1.2742 val_ap 0.8509 val_mrr 0.5551
+[seed 1] epoch 14 loss 1.2821 val_ap 0.8541 val_mrr 0.5371
+[seed 1] epoch 15 loss 1.2681 val_ap 0.8552 val_mrr 0.5404
+[seed 1] epoch 16 loss 1.2777 val_ap 0.8559 val_mrr 0.5425
+[seed 1] epoch 17 loss 1.2505 val_ap 0.8563 val_mrr 0.5411
+[seed 1] epoch 18 loss 1.2496 val_ap 0.8522 val_mrr 0.5163
+[seed 1] epoch 19 loss 1.2471 val_ap 0.8574 val_mrr 0.5353
+[seed 1] epoch 20 loss 1.2415 val_ap 0.8559 val_mrr 0.5328
+[seed 1] epoch 21 loss 1.2393 val_ap 0.8560 val_mrr 0.5274
+[seed 1] epoch 22 loss 1.2315 val_ap 0.8580 val_mrr 0.5435
+[seed 1] epoch 23 loss 1.2236 val_ap 0.8582 val_mrr 0.5289
+[seed 1] epoch 24 loss 1.2215 val_ap 0.8537 val_mrr 0.5172
+[seed 1] epoch 25 loss 1.2225 val_ap 0.8556 val_mrr 0.5320
+[seed 1] epoch 26 loss 1.2196 val_ap 0.8566 val_mrr 0.5224
+[seed 1] epoch 27 loss 1.2166 val_ap 0.8614 val_mrr 0.5476
+[seed 1] epoch 28 loss 1.2086 val_ap 0.8536 val_mrr 0.5077
+[seed 1] epoch 29 loss 1.2042 val_ap 0.8540 val_mrr 0.5315
+[seed 1] epoch 30 loss 1.1986 val_ap 0.8552 val_mrr 0.5279
+[seed 1] epoch 31 loss 1.1955 val_ap 0.8526 val_mrr 0.5102
+[seed 1] epoch 32 loss 1.1941 val_ap 0.8520 val_mrr 0.5245
+[seed 1] epoch 33 loss 1.2026 val_ap 0.8551 val_mrr 0.5370
+[seed 1] epoch 34 loss 1.1925 val_ap 0.8510 val_mrr 0.5120
+[seed 1] epoch 35 loss 1.1961 val_ap 0.8548 val_mrr 0.5120
+[seed 1] epoch 36 loss 1.1857 val_ap 0.8525 val_mrr 0.5060
+[seed 1] epoch 37 loss 1.1769 val_ap 0.8519 val_mrr 0.5123
+[seed 1] epoch 38 loss 1.1885 val_ap 0.8505 val_mrr 0.5114
+[seed 1] epoch 39 loss 1.1783 val_ap 0.8557 val_mrr 0.5287
+[seed 1] epoch 40 loss 1.1698 val_ap 0.8518 val_mrr 0.5209
+[seed 1] epoch 41 loss 1.1778 val_ap 0.8561 val_mrr 0.5185
+[seed 1] epoch 42 loss 1.1800 val_ap 0.8540 val_mrr 0.5110
+[seed 1] epoch 43 loss 1.1648 val_ap 0.8527 val_mrr 0.5245
+[seed 1] epoch 44 loss 1.1697 val_ap 0.8519 val_mrr 0.5096
+[seed 1] epoch 45 loss 1.1666 val_ap 0.8504 val_mrr 0.5181
+[seed 1] epoch 46 loss 1.1675 val_ap 0.8536 val_mrr 0.5254
+[seed 1] epoch 47 loss 1.1526 val_ap 0.8481 val_mrr 0.5097
+[seed 1] epoch 48 loss 1.1558 val_ap 0.8479 val_mrr 0.5082
+[seed 1] epoch 49 loss 1.1639 val_ap 0.8504 val_mrr 0.5019
+seed 1: best val AP 0.6885 (50 epochs)

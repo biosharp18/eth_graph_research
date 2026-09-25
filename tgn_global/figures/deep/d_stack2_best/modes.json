@@ -1,0 +1,27 @@
+{
+  "unseen_pos_frac": 0.5926165803108808,
+  "modes": {
+    "inductive_sym": {
+      "edgebank": {},
+      "models": {
+        "d_stack2": {
+          "auroc": [
+            0.666902350890732,
+            0.6743442241307356
+          ]
+        }
+      }
+    },
+    "test_recurring": {
+      "edgebank": {},
+      "models": {
+        "d_stack2": {
+          "auroc": [
+            0.6341896994134897,
+            0.6393518428419088
+          ]
+        }
+      }
+    }
+  }
+}

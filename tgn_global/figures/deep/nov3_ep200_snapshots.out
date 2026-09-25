@@ -1,0 +1,27 @@
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+random: batch-mean auroc 0.8855 (pad 0.000)
+historical: batch-mean auroc 0.8610 (pad 0.000)
+inductive: batch-mean auroc 0.8568 (pad 0.060)
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+inductive_sym nov3_ep200_ep50: 0.8269
+test_recurring nov3_ep200_ep50: 0.7186
+done
+snapshot nov3_ep200 ep50 done
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+random: batch-mean auroc 0.8775 (pad 0.000)
+historical: batch-mean auroc 0.8570 (pad 0.000)
+inductive: batch-mean auroc 0.8611 (pad 0.060)
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+inductive_sym nov3_ep200_ep100: 0.8314
+test_recurring nov3_ep200_ep100: 0.7238
+done
+snapshot nov3_ep200 ep100 done
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+random: batch-mean auroc 0.8794 (pad 0.000)
+historical: batch-mean auroc 0.8582 (pad 0.000)
+inductive: batch-mean auroc 0.8622 (pad 0.060)
+warning: `VIRTUAL_ENV=.venv` does not match the project environment path `/tmp/tgat-venv` and will be ignored; use `--active` to target the active environment instead
+inductive_sym nov3_ep200_ep150: 0.8344
+test_recurring nov3_ep200_ep150: 0.7259
+done
+snapshot nov3_ep200 ep150 done

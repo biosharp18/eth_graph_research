@@ -1,0 +1,5 @@
+seed 0: best val AP 0.9470 (37 epochs)
+seed 1: best val AP 0.9470 (50 epochs)
+seed 2: best val AP 0.9476 (48 epochs)
+seed 3: best val AP 0.9488 (49 epochs)
+seed 4: best val AP 0.9500 (50 epochs)

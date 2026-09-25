@@ -1,0 +1,51 @@
+{
+  "protocol": "dgb_per_batch",
+  "batch_size": 200,
+  "n_test": 6176,
+  "models": "tgn_global/figures/deep/d_hop2_nov3_last",
+  "tgn": {
+    "random": {
+      "auroc_batch_mean": [
+        0.8878753149160226,
+        0.8809479905358573
+      ],
+      "auroc_global": [
+        0.8869397867644098,
+        0.880119028992389
+      ],
+      "pad_frac": [
+        0.0,
+        0.0
+      ]
+    },
+    "historical": {
+      "auroc_batch_mean": [
+        0.8705596490935751,
+        0.8666199496800853
+      ],
+      "auroc_global": [
+        0.8700932381364265,
+        0.8666624885273766
+      ],
+      "pad_frac": [
+        0.0,
+        0.0
+      ]
+    },
+    "inductive": {
+      "auroc_batch_mean": [
+        0.8575012413356439,
+        0.8540928502399361
+      ],
+      "auroc_global": [
+        0.8582733292756182,
+        0.853147785322257
+      ],
+      "pad_frac": [
+        0.06023316062176166,
+        0.06023316062176166
+      ]
+    }
+  },
+  "edgebank": {}
+}
