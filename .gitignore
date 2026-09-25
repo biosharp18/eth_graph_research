@@ -19,3 +19,6 @@ figures/tgn_pf_*/
 figures/tgn_pfpop_*_models/
 tgn_improvement/figures/imp_*/
 tgn_improvement/figures/tgn_pf*/
+
+# Model checkpoints (all campaigns): results JSONs / logs next to them are committed
+*.pt
